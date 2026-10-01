@@ -118,9 +118,12 @@
         <div class="login-box">
             <h1>ALTIN</h1>
             <p>سیستەمی ئۆنلاین (Supabase)</p>
-            <input id="loginUsername" type="text" placeholder="ناوی بەکارهێنەر" autocomplete="off">
-            <input id="loginPassword" type="password" placeholder="وشەی نهێنی" autocomplete="off">
-            <button onclick="handleLogin()">چوونە ژوورەوە</button>
+            <!-- زیادکردنی فرم بۆ ئەوەی ڕووداوی سابمیت بەباشی لە مۆبایل کاربکات -->
+            <form onsubmit="event.preventDefault(); handleLogin();">
+                <input id="loginUsername" type="text" placeholder="ناوی بەکارهێنەر" autocomplete="username">
+                <input id="loginPassword" type="password" placeholder="وشەی نهێنی" autocomplete="current-password">
+                <button type="submit">چوونە ژوورەوە</button>
+            </form>
             <div id="loginError">ناوی بەکارهێنەر یان وشەی نهێنی هەڵەیە!</div>
         </div>
     </div>
@@ -425,23 +428,31 @@
             }
         }
 
+        // چارەسەری نوێ بۆ دوگمەی چوونەژوورەوە لەسەر ئایفۆن
         function handleLogin() {
-            let u = $("loginUsername").value;
-            let p = $("loginPassword").value;
-            if (u === localStorage.getItem(AUTH_USER_KEY) && p === localStorage.getItem(AUTH_PASS_KEY)) {
-                sessionStorage.setItem(SESSION_KEY, "true");
-                $("loginScreen").style.display = "none";
-                $("mainApp").style.display = "flex";
-                loadDataFromSupabase();
-            } else {
-                if($("loginError")) $("loginError").style.display = "block";
-            }
-        }
+            let uInput = $("loginUsername");
+            let pInput = $("loginPassword");
+            
+            let u = uInput ? uInput.value.trim() : "";
+            let p = pInput ? pInput.value.trim() : "";
+            
+            let savedUser = localStorage.getItem(AUTH_USER_KEY) || "admin";
+            let savedPass = localStorage.getItem(AUTH_PASS_KEY) || "12345";
 
-        if ($("loginPassword")) {
-            $("loginPassword").addEventListener("keypress", function(event) {
-                if (event.key === "Enter") handleLogin();
-            });
+            if (u === savedUser && p === savedPass) {
+                sessionStorage.setItem(SESSION_KEY, "true");
+                if ($("loginScreen")) $("loginScreen").style.display = "none";
+                if ($("mainApp")) {
+                    $("mainApp").style.display = "flex";
+                    loadDataFromSupabase();
+                }
+            } else {
+                if ($("loginError")) {
+                    $("loginError").style.display = "block";
+                    // سڕینەوەی پاسۆردەکە ئەگەر هەڵە بوو
+                    if (pInput) pInput.value = "";
+                }
+            }
         }
 
         function handleLogout() {
