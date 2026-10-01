@@ -5,9 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <title>ALTIN • سیستەمی کڕین و فرۆشتن</title>
+    <title>ALTIN • سیستەمی کڕین و فرۆشتن (ئۆنلاین)</title>
     <!-- SheetJS for Excel (.xlsx) Parsing -->
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <!-- Supabase JS Library -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         :root{--bg:#f4f5f7;--card:#fff;--text:#17191d;--muted:#737982;--line:#e5e7eb;--gold:#b58a35;--danger:#c53b3b;--ok:#25855a}
         *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
@@ -15,7 +17,6 @@
         button,input,select{font:inherit;outline:none;}
         button{cursor:pointer;border:0;}
         
-        /* شێوازی شاشەی چوونە ژوورەوە (Login) */
         #loginScreen { position:fixed; inset:0; background:#15171b; display:flex; align-items:center; justify-content:center; z-index:9999; padding:20px; }
         .login-box { background:#fff; padding:40px 30px; border-radius:20px; width:100%; max-width:400px; text-align:center; box-shadow:0 25px 50px rgba(0,0,0,0.25); }
         .login-box h1 { color:var(--gold); font-size:32px; margin:0 0 5px 0; font-weight:900; letter-spacing:1px; }
@@ -78,35 +79,18 @@
         .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;z-index:100;padding:16px;-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px);}
         .modal-box{background:#fff;border-radius:20px;width:100%;max-width:750px;max-height:90vh;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:40px;box-shadow:0 20px 40px rgba(0,0,0,0.15);}
 
-        /* ڕێکخستنی قەبارەی ستاندردی A4 بۆ چاپکردن */
-        @page {
-            size: A4;
-            margin: 15mm;
-        }
+        @page { size: A4; margin: 15mm; }
 
         @media print {
             body { background: #fff; color: #000; margin: 0; padding: 0; }
             .side, .top, .primary, .btn, button, input, select, .no-print, .nav, #loginScreen { display: none !important; }
             .main { display: none !important; }
-            
             #modalContainer { display: block !important; position: absolute; left: 0; top: 0; width: 100%; height: 100%; margin: 0; padding: 0; }
             .modal-overlay { position: absolute; background: none; padding: 0; inset: auto; display: block; }
-            
             .modal-box { 
-                box-shadow: none; 
-                max-width: 100% !important; 
-                width: 100% !important; 
-                height: 100% !important; 
-                min-height: 250mm;
-                padding: 10mm !important; 
-                border: none; 
-                overflow: visible; 
-                margin: 0; 
-                display: flex;
-                flex-direction: column;
-                justify-content: space-between;
+                box-shadow: none; max-width: 100% !important; width: 100% !important; height: 100% !important; min-height: 250mm;
+                padding: 10mm !important; border: none; overflow: visible; margin: 0; display: flex; flex-direction: column; justify-content: space-between;
             }
-            
             .invoice-print-area { border: none !important; box-shadow: none !important; padding: 0 !important; }
             table { font-size: 15px; width: 100%; }
             th { background-color: #f3f4f6 !important; -webkit-print-color-adjust: exact; color: #000; }
@@ -130,21 +114,17 @@
 </head>
 <body>
 
-    <!-- شاشەی چوونە ژوورەوە -->
     <div id="loginScreen">
         <div class="login-box">
             <h1>ALTIN</h1>
-            <p>سیستەمی بەڕێوەبردنی فرۆشتن و کۆگا</p>
-            
+            <p>سیستەمی ئۆنلاین (Supabase)</p>
             <input id="loginUsername" type="text" placeholder="ناوی بەکارهێنەر" autocomplete="off">
             <input id="loginPassword" type="password" placeholder="وشەی نهێنی" autocomplete="off">
-            
             <button onclick="handleLogin()">چوونە ژوورەوە</button>
             <div id="loginError">ناوی بەکارهێنەر یان وشەی نهێنی هەڵەیە!</div>
         </div>
     </div>
 
-    <!-- ئەپی سەرەکی -->
     <div class="app" id="mainApp" style="display:none;">
         <aside class="side">
             <div class="brand">ALTIN</div>
@@ -158,7 +138,6 @@
                 <button onclick="showPage('customers',this)">👤 کڕیاران و قەرز</button>
                 <button onclick="showPage('reports',this)">📊 ڕاپۆرت</button>
                 <button onclick="showPage('settings',this)">⚙ ڕێکخستن</button>
-                
                 <button class="logout-btn" onclick="handleLogout()">🚪 دەرچوون</button>
             </div>
         </aside>
@@ -167,7 +146,7 @@
             <div class="top">
                 <div>
                     <h1 id="pageTitle">داشبۆرد</h1>
-                    <small>سیستەمی بەڕێوەبردنی کۆگا و فرۆشتن</small>
+                    <small>سیستەمی ئۆنلاین بۆ بەڕێوەبردنی کۆگا و فرۆشتن</small>
                 </div>
                 <div id="today" style="font-size:13px; font-weight:600; background:#fff; padding:8px 12px; border-radius:10px; border:1px solid var(--line);"></div>
             </div>
@@ -198,17 +177,12 @@
             </section>
 
             <section id="sales" class="page hidden">
-                <!-- سیستەمی فرەیی سەبەتەکان (Multi-Carts / Tabs) -->
-                <div style="display:flex; gap:8px; margin-bottom:15px; overflow-x:auto; padding-bottom:5px;" id="cartTabsContainer">
-                    <!-- بە شێوەی خۆکار لەڕێی جافاسکریپتەوە دروست دەبن -->
-                </div>
-
+                <div style="display:flex; gap:8px; margin-bottom:15px; overflow-x:auto; padding-bottom:5px;" id="cartTabsContainer"></div>
                 <div class="panel">
                     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
                         <h2 id="currentCartTitle" style="margin:0;">🛒 تۆمارکردنی فرۆشتن (سەبەتەی ١)</h2>
                         <button class="btn" style="background:var(--gold); color:#fff; font-weight:bold;" onclick="addNewCart()">+ کردنەوەی سەبەتەیەکی نوێ</button>
                     </div>
-
                     <div class="formgrid">
                         <div>
                             <label>🔍 گەڕان بەدوای کاڵا</label>
@@ -228,12 +202,9 @@
                         </div>
                     </div>
                     <button class="btn gold" style="margin-top:14px; width:100%; padding:12px; color:#fff; font-weight:bold;" onclick="addToCart()">+ زیادکردن بۆ سەبەتەی فرۆشتن</button>
-
-                    <!-- خشتەی سەبەتەی فرۆشتن -->
                     <div style="margin-top:20px; border-top:2px dashed var(--line); padding-top:15px;">
                         <h3 style="font-size:16px; margin:0 0 10px 0;">🛍 کاڵاکانی ناو سەبەتە</h3>
                         <div id="cartTable"></div>
-
                         <div class="formgrid" style="margin-top:15px;">
                             <div>
                                 <label>جۆری درانی پارە</label>
@@ -251,7 +222,6 @@
                                 <input id="saleCustomerPhone" placeholder="0750XXXXXXX" type="text" style="direction: ltr; text-align: right;">
                             </div>
                         </div>
-
                         <div style="margin-top:15px; display:flex; align-items:center; justify-content:space-between; background:#f8fafc; padding:15px; border-radius:12px; border:1px solid var(--line);">
                             <span style="font-size:15px; font-weight:600; color:var(--muted);">کۆی گشتی هەموو سەبەتەکە:</span>
                             <span id="cartTotalPreview" style="font-size:22px; font-weight:bold; color:var(--gold);">0 د.ع</span>
@@ -259,7 +229,6 @@
                         <button class="primary" onclick="checkoutCart()">تۆمارکردن و چاپکردنی وەسڵ</button>
                     </div>
                 </div>
-
                 <div class="panel">
                     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px; flex-wrap:wrap; gap:10px;">
                         <h2 style="margin:0;">📋 مێژووی فرۆشتن</h2>
@@ -302,7 +271,6 @@
                 </div>
             </section>
 
-            <!-- بەشی مرجوعات -->
             <section id="returns" class="page hidden">
                 <div class="panel">
                     <h2>🔄 گەڕاندنەوەی کاڵا (فاتوورەی مرجوعات)</h2>
@@ -325,12 +293,9 @@
                         </div>
                     </div>
                     <button class="btn danger" style="margin-top:14px; width:100%; padding:12px; font-weight:bold;" onclick="addToReturnCart()">+ زیادکردن بۆ سەبەتەی مرجوعات</button>
-
-                    <!-- سەبەتەی مرجوعات -->
                     <div style="margin-top:20px; border-top:2px dashed var(--line); padding-top:15px;">
                         <h3 style="font-size:16px; margin:0 0 10px 0;">🛍 کاڵاکانی گەڕاوە لە سەبەتە</h3>
                         <div id="returnCartTable"></div>
-
                         <div class="formgrid" style="margin-top:15px;">
                             <div>
                                 <label>ناوی کڕیار</label>
@@ -341,7 +306,6 @@
                                 <input id="returnReason" placeholder="نموونە: هەڵە لە جۆر یان کێشە...">
                             </div>
                         </div>
-
                         <div style="margin-top:15px; display:flex; align-items:center; justify-content:space-between; background:#f8fafc; padding:15px; border-radius:12px; border:1px solid var(--line);">
                             <span style="font-size:15px; font-weight:600; color:var(--muted);">کۆی گشتی بڕی گەڕاوە:</span>
                             <span id="returnCartTotalPreview" style="font-size:22px; font-weight:bold; color:var(--danger);">0 د.ع</span>
@@ -349,7 +313,6 @@
                         <button class="primary danger text-white" style="background:#c53b3b;" onclick="checkoutReturnCart()">تۆمارکردن و چاپکردنی وەسڵی مرجوعات</button>
                     </div>
                 </div>
-
                 <div class="panel">
                     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px; flex-wrap:wrap; gap:10px;">
                         <h2 style="margin:0;">📋 مێژووی مرجوعات</h2>
@@ -372,7 +335,6 @@
                     </div>
                     <button class="primary" onclick="addProduct()">زیادکردنی کاڵا بۆ کۆگا</button>
                 </div>
-
                 <div class="panel" style="background: #f8fafc; border: 2px dashed #cbd5e1;">
                     <h2>📤 بەرزکردنەوەی کاڵاکان لەڕێی فایلی Excel (.xlsx / .csv)</h2>
                     <p style="font-size:12px; color:var(--muted); margin-bottom:15px;">دەتوانیت فایلی ئێکسڵ بەم ستوونانە بەرز بکەیتەوە: <b>ناوی کاڵا, کۆد, نرخی کڕین, نرخی فرۆشتن, ژمارە</b></p>
@@ -381,7 +343,6 @@
                         <input type="file" id="excelFile" accept=".xlsx, .xls, .csv" class="hidden" onchange="importExcel(event)">
                     </label>
                 </div>
-
                 <div class="panel">
                     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px; flex-wrap:wrap; gap:10px;">
                         <h2 style="margin:0;">📦 کۆگای کاڵاکان</h2>
@@ -419,7 +380,6 @@
                     </div>
                     <button class="primary" onclick="addDebt()">تۆمارکردنی قەرز</button>
                 </div>
-                
                 <div class="panel">
                     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; flex-wrap:wrap; gap:10px;">
                         <h2 style="margin:0;">🔍 کەشف حسابی کڕیار (فاتورە و قەرزەکان)</h2>
@@ -454,32 +414,14 @@
                 <div class="panel">
                     <h2>⚙️ ڕێکخستنی سیستەم و پاشەکەوت</h2>
                     <div class="setting"><span>یەکەی پارە</span><strong style="color:var(--gold);">دیناری عێراقی (د.ع)</strong></div>
-                    <div class="setting"><span>شێوازی پاشەکەوت</span><strong>خۆکار لە ناو Safari (LocalStorage)</strong></div>
-                    
+                    <div class="setting"><span>شێوازی پاشەکەوت</span><strong style="color:var(--ok);">ئۆنلاین لەسەر Supabase ☁️</strong></div>
                     <div style="margin-top:20px; background:#f8fafc; padding:20px; border-radius:16px; border:1px solid var(--line);">
                         <h3 style="margin:0 0 10px 0; font-size:16px;">🔐 گۆڕینی ناوی بەکارهێنەر و وشەی نهێنی</h3>
-                        <p style="font-size:13px; color:var(--muted); margin-bottom:15px;">لێرە دەتوانیت یوزرنەم و پاسۆردی چوونە ژوورەوەی سیستەم بگۆڕیت.</p>
                         <div class="formgrid" style="margin-bottom:15px;">
                             <div><label>ناوی بەکارهێنەری نوێ</label><input id="newUsername" placeholder="يوزەری نوێ"></div>
                             <div><label>وشەی نهێنی نوێ</label><input id="newPassword" type="password" placeholder="پاسۆردی نوێ"></div>
                         </div>
                         <button class="btn gold" style="color:#fff; padding:12px 20px;" onclick="updateCredentials()">پاشەکەوتکردنی زانیاریی نوێ</button>
-                    </div>
-
-                    <div style="margin-top:20px; background:#f8fafc; padding:20px; border-radius:16px; border:1px solid var(--line);">
-                        <h3 style="margin:0 0 10px 0; font-size:16px;">📦 پشتیوانی و گەڕاندنەوەی داتا (Backup)</h3>
-                        <p style="font-size:13px; color:var(--muted); margin-bottom:15px;">دەتوانیت داتاکانت وەک فایل داببەزێنیت یان بیانگەڕێنیتەوە.</p>
-                        <div style="display:flex; flex-wrap:wrap; gap:10px;">
-                            <button class="btn" style="background:#25855a; color:#fff;" onclick="exportData()">📥 داگرتنی فایل (Export)</button>
-                            <label class="btn" style="background:#3182ce; color:#fff; cursor:pointer;">
-                                📤 بەرزکردنەوەی فایل (Import)
-                                <input type="file" id="importFile" accept=".json" class="hidden" onchange="importData(event)">
-                            </label>
-                        </div>
-                    </div>
-
-                    <div style="margin-top:25px;">
-                        <button class="primary danger text-white" style="background:#c53b3b;" onclick="resetAll()">⚠ سڕینەوەی هەموو داتاکان</button>
                     </div>
                 </div>
             </section>
@@ -489,7 +431,12 @@
     <div id="modalContainer"></div>
 
     <script>
-        // --- سیستەمی چوونە ژوورەوە ---
+        // --- وەسڵی پەیوەندی بە Supabase ---
+        const SUPABASE_URL = "https://dxutptpuwkitjzcofhstl.supabase.co";
+        const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImR4dXRwdHB1d2tpdHzcofhstlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTA4NzQ0NDAsImV4cCI6MjEwNjQ1MDQ0MH0.hjiGeyserihKcTIU-y0vCwWNnopNqURoN6AMrqeBDhs";
+        
+        const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
         const AUTH_USER_KEY = "ALTIN_USERNAME";
         const AUTH_PASS_KEY = "ALTIN_PASSWORD";
         const SESSION_KEY = "ALTIN_AUTH";
@@ -507,13 +454,11 @@
         function handleLogin() {
             let u = $("loginUsername").value;
             let p = $("loginPassword").value;
-            let savedUser = localStorage.getItem(AUTH_USER_KEY);
-            let savedPass = localStorage.getItem(AUTH_PASS_KEY);
-
-            if (u === savedUser && p === savedPass) {
+            if (u === localStorage.getItem(AUTH_USER_KEY) && p === localStorage.getItem(AUTH_PASS_KEY)) {
                 sessionStorage.setItem(SESSION_KEY, "true");
                 $("loginScreen").style.display = "none";
                 $("mainApp").style.display = "flex";
+                loadDataFromSupabase();
             } else {
                 $("loginError").style.display = "block";
             }
@@ -533,33 +478,44 @@
         function updateCredentials() {
             let u = $("newUsername").value.trim();
             let p = $("newPassword").value.trim();
-            if(!u || !p) {
-                showMsg("تێبینی", "تکایە هەردوو خانەی یوزەرت و پاسۆرد پربکەرەوە", true);
-                return;
-            }
+            if(!u || !p) { showMsg("تێبینی", "تکایە هەردوو خانە پڕبکەرەوە", true); return; }
             localStorage.setItem(AUTH_USER_KEY, u);
             localStorage.setItem(AUTH_PASS_KEY, p);
-            $("newUsername").value = "";
-            $("newPassword").value = "";
-            showMsg("سەرکەوتوو بوو", "ناوی بەکارهێنەر و وشەی نهێنی بە سەرکەوتوویی گۆڕران.");
+            $("newUsername").value = ""; $("newPassword").value = "";
+            showMsg("سەرکەوتوو بوو", "زانیاری گۆڕدرا.");
         }
-        // ----------------------------------------------
 
-        const KEY = "ALTIN_SAFARI_V1_DATA";
-        let db = JSON.parse(localStorage.getItem(KEY) || 'null') || { products: [], sales: [], purchases: [], expenses: [], debts: [], returns: [], payments: [] };
-        if (!db.returns) db.returns = []; 
-        if (!db.payments) db.payments = [];
+        let db = { products: [], sales: [], purchases: [], expenses: [], debts: [], returns: [] };
         
-        // --- سیستەمی چەند سەبەتەیە (Multi-Carts / Tabs) بۆ فرۆشتنی هاوکات ---
         let carts = JSON.parse(localStorage.getItem("ALTIN_CARTS_V1") || 'null') || {
             activeCartId: "cart_1",
-            items: {
-                "cart_1": { name: "سەبەتەی ١", items: [], type: "cash", customer: "", phone: "" }
-            }
+            items: { "cart_1": { name: "سەبەتەی ١", items: [], type: "cash", customer: "", phone: "" } }
         };
 
-        function saveCarts() {
-            localStorage.setItem("ALTIN_CARTS_V1", JSON.stringify(carts));
+        function saveCarts() { localStorage.setItem("ALTIN_CARTS_V1", JSON.stringify(carts)); }
+
+        async function loadDataFromSupabase() {
+            try {
+                let [pRes, sRes, puRes, eRes, dRes, rRes] = await Promise.all([
+                    _supabase.from('products').select('*'),
+                    _supabase.from('sales').select('*'),
+                    _supabase.from('purchases').select('*'),
+                    _supabase.from('expenses').select('*'),
+                    _supabase.from('debts').select('*'),
+                    _supabase.from('returns').select('*')
+                ]);
+
+                if(pRes.data) db.products = pRes.data;
+                if(sRes.data) db.sales = sRes.data;
+                if(puRes.data) db.purchases = puRes.data;
+                if(eRes.data) db.expenses = eRes.data;
+                if(dRes.data) db.debts = dRes.data;
+                if(rRes.data) db.returns = rRes.data;
+
+                renderAll();
+            } catch (err) {
+                console.error("هەڵە لە هێنانی زانیاری لە Supabase:", err);
+            }
         }
 
         function addNewCart() {
@@ -572,28 +528,16 @@
             renderCart();
         }
 
-        function switchCart(id) {
-            carts.activeCartId = id;
-            saveCarts();
-            renderCartTabs();
-            renderCart();
-        }
+        function switchCart(id) { carts.activeCartId = id; saveCarts(); renderCartTabs(); renderCart(); }
 
         function removeCartTab(id, event) {
             event.stopPropagation();
             let keys = Object.keys(carts.items);
-            if (keys.length <= 1) {
-                showMsg("تێبینی", "ناتوانیت کۆتا سەبەتە بسڕیتەوە!", true);
-                return;
-            }
-            if (confirm("ئایا دڵنیایت لە سڕینەوەی ئەم سەبەتەیە؟")) {
+            if (keys.length <= 1) { showMsg("تێبینی", "ناتوانیت کۆتا سەبەتە بسڕیتەوە!", true); return; }
+            if (confirm("ئایا دڵنیایت؟")) {
                 delete carts.items[id];
-                if (carts.activeCartId === id) {
-                    carts.activeCartId = Object.keys(carts.items)[0];
-                }
-                saveCarts();
-                renderCartTabs();
-                renderCart();
+                if (carts.activeCartId === id) carts.activeCartId = Object.keys(carts.items)[0];
+                saveCarts(); renderCartTabs(); renderCart();
             }
         }
 
@@ -606,7 +550,7 @@
                 let isActive = carts.activeCartId === id;
                 let count = c.items.reduce((sum, i) => sum + i.qty, 0);
                 html += `
-                    <div onclick="switchCart('${id}')" style="display:flex; align-items:center; gap:8px; padding:10px 16px; background:${isActive ? 'var(--gold)' : '#fff'}; color:${isActive ? '#fff' : 'var(--text)'}; border-radius:12px; cursor:pointer; border:1px solid var(--line); font-weight:600; font-size:14px; white-space:nowrap; box-shadow:0 1px 3px rgba(0,0,0,0.05);">
+                    <div onclick="switchCart('${id}')" style="display:flex; align-items:center; gap:8px; padding:10px 16px; background:${isActive ? 'var(--gold)' : '#fff'}; color:${isActive ? '#fff' : 'var(--text)'}; border-radius:12px; cursor:pointer; border:1px solid var(--line); font-weight:600; font-size:14px; white-space:nowrap;">
                         <span>${c.name} (${count})</span>
                         ${Object.keys(carts.items).length > 1 ? `<span onclick="removeCartTab('${id}', event)" style="font-size:12px; opacity:0.8; padding:2px 6px; border-radius:6px; background:rgba(0,0,0,0.1);">✕</span>` : ''}
                     </div>
@@ -622,12 +566,11 @@
             }
         }
 
-        let currentReturnCart = []; // سەبەتەی تایبەت بە مرجوعات
+        let currentReturnCart = [];
 
         function $(id) { return document.getElementById(id); }
         const money = n => new Intl.NumberFormat("ku-IQ").format(Math.round(n || 0)) + " د.ع";
-        const save = () => { localStorage.setItem(KEY, JSON.stringify(db)); renderAll(); };
-        function product(id) { return db.products.find(p => p.id === id); }
+        function product(id) { return db.products.find(p => p.id === id || p.id == id); }
         function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
 
         function showPage(id, btn) {
@@ -659,22 +602,27 @@
 
         function closeModal() { $("modalContainer").innerHTML = ""; }
 
-        function addProduct() {
+        async function addProduct() {
             let p = {
-                id: uid(),
                 name: $("productName").value.trim(),
                 code: $("productCode").value.trim(),
-                buy: +$("productBuy").value,
-                sell: +$("productSell").value,
-                qty: +$("productQty").value,
-                min: +$("productMin").value
+                buy_price: +$("productBuy").value,
+                sell_price: +$("productSell").value,
+                stock: +$("productQty").value,
+                min_stock: +$("productMin").value
             };
             if (!p.name) { showMsg("تێبینی", "تکایە ناوی کاڵا بنووسە", true); return; }
-            db.products.push(p);
-            save();
-            ["productName", "productCode", "productBuy", "productSell", "productQty"].forEach(id => $(id).value = "");
-            $("productMin").value = 2;
-            showMsg("سەرکەوتوو بوو", "کاڵاکە بۆ کۆگا زیادکرا.");
+            
+            let { data, error } = await _supabase.from('products').insert([p]).select();
+            if (error) {
+                showMsg("هەڵە", "نەتوانرا کاڵا لە سرڤەر پاشەکەوت بکرێت", true);
+            } else {
+                if(data) db.products.push({ id: data[0].id, name: data[0].name, code: data[0].code, buy: data[0].buy_price, sell: data[0].sell_price, qty: data[0].stock, min: data[0].min_stock });
+                ["productName", "productCode", "productBuy", "productSell", "productQty"].forEach(id => $(id).value = "");
+                $("productMin").value = 2;
+                renderAll();
+                showMsg("سەرکەوتوو بوو", "کاڵاکە لە کۆگای ئۆنلاین زیادکرا.");
+            }
         }
 
         function editProductModal(id) {
@@ -683,7 +631,7 @@
             $("modalContainer").innerHTML = `
                 <div class="modal-overlay">
                     <div class="modal-box">
-                        <h2 style="margin-top:0;">✏️ دەستکاریکردنی کاڵا</h2>
+                        <h2 style="margin-top:0;">✏️️ دەستکاریکردنی کاڵا</h2>
                         <div class="formgrid">
                             <div><label>ناوی کاڵا</label><input id="editName" value="${p.name}"></div>
                             <div><label>کۆد</label><input id="editCode" value="${p.code || ''}"></div>
@@ -701,44 +649,47 @@
             `;
         }
 
-        function saveEditedProduct(id) {
+        async function saveEditedProduct(id) {
             let p = product(id);
             if (!p) return;
             let newName = $("editName").value.trim();
             if (!newName) { showMsg("تێبینی", "ناوی کاڵا ناتواندرێت بەتاڵ بێت", true); return; }
+            
             p.name = newName;
             p.code = $("editCode").value.trim();
             p.buy = +$("editBuy").value || 0;
             p.sell = +$("editSell").value || 0;
             p.qty = +$("editQty").value || 0;
             p.min = +$("editMin").value || 0;
-            save();
+
+            await _supabase.from('products').update({
+                name: p.name,
+                code: p.code,
+                buy_price: p.buy,
+                sell_price: p.sell,
+                stock: p.qty,
+                min_stock: p.min
+            }).eq('id', id);
+
+            renderAll();
             closeModal();
             showMsg("سەرکەوتوو بوو", "زانیارییەکانی کاڵاکە نوێکرانەوە.");
         }
 
-        function importExcel(event) {
+        async function importExcel(event) {
             const file = event.target.files[0];
             if (!file) return;
             const reader = new FileReader();
-            reader.onload = function(e) {
+            reader.onload = async function(e) {
                 try {
                     const data = new Uint8Array(e.target.result);
                     const workbook = XLSX.read(data, { type: 'array' });
-                    const firstSheetName = workbook.SheetNames[0];
-                    const worksheet = workbook.Sheets[firstSheetName];
-                    const json = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+                    const json = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]], { header: 1 });
                     
-                    if (json.length < 2) {
-                        showMsg("هەڵە", "فایلەکە هیچ زانیارییەک لەخۆ ناگرێت.", true);
-                        return;
-                    }
-
                     let addedCount = 0;
                     for (let i = 1; i < json.length; i++) {
                         let row = json[i];
                         if (!row || row.length === 0) continue;
-                        
                         let name = String(row[0] || "").trim();
                         let code = String(row[1] || "").trim();
                         let buy = Number(row[2]) || 0;
@@ -746,23 +697,24 @@
                         let qty = Number(row[4]) || 0;
 
                         if (name) {
-                            db.products.push({
-                                id: uid(),
+                            let { data: insData } = await _supabase.from('products').insert([{
                                 name: name,
                                 code: code !== "undefined" ? code : "",
-                                buy: buy,
-                                sell: sell,
-                                qty: qty,
-                                min: 2
-                            });
+                                buy_price: buy,
+                                sell_price: sell,
+                                stock: qty,
+                                min_stock: 2
+                            }]).select();
+                            if(insData) {
+                                db.products.push({ id: insData[0].id, name, code, buy, sell, qty, min: 2 });
+                            }
                             addedCount++;
                         }
                     }
-
-                    save();
-                    showMsg("سەرکەوتوو بوو", `${addedCount} کاڵا بە سەرکەوتوویی لە فایلی ئێکسڵەوە زیادکران بۆ کۆگا.`);
+                    renderAll();
+                    showMsg("سەرکەوتوو بوو", `${addedCount} کاڵا زیادکران.`);
                 } catch (err) {
-                    showMsg("هەڵە", "نەتوانرا فایلەکە بخوێنرێتەوە. دڵنیابە لە ڕێکی فۆرماتەکە.", true);
+                    showMsg("هەڵە", "نەتوانرا فایلەکە بخوێنرێتەوە.", true);
                 }
                 event.target.value = "";
             };
@@ -771,48 +723,35 @@
 
         function updateSaleMax() {
             let p = product($("saleProduct").value);
-            if (p) {
-                $("salePrice").value = p.sell;
-                $("saleQty").max = p.qty;
-            }
+            if (p) { $("salePrice").value = p.sell; $("saleQty").max = p.qty; }
         }
-
         function updatePurchaseCost() {
             let p = product($("purchaseProduct").value);
             if (p) $("purchasePrice").value = p.buy;
         }
-
         function updateReturnCost() {
             let p = product($("returnProduct").value);
             if (p) $("returnPrice").value = p.sell;
         }
 
-        // --- بەڕێوەبردنی سەبەتەی فرۆشتن ---
         function addToCart() {
             let id = $("saleProduct").value, p = product(id), q = +$("saleQty").value, price = +$("salePrice").value;
             if (!p || q <= 0 || price < 0) { showMsg("تێبینی", "تکایە کاڵا و بڕ بە دروستی هەڵبژێرە", true); return; }
-
             let currentCartObj = carts.items[carts.activeCartId];
-            let inCartQty = currentCartObj.items.filter(item => item.product === id).reduce((sum, item) => sum + item.qty, 0);
+            let inCartQty = currentCartObj.items.filter(item => item.product == id).reduce((sum, item) => sum + item.qty, 0);
             
             if (p.qty < (inCartQty + q)) {
                 showMsg("تێبینی", `تەنها ${p.qty - inCartQty} دانە لەم کاڵایە لە کۆگا ماوە!`, true);
                 return;
             }
-
             currentCartObj.items.push({ product: id, name: p.name, qty: q, price: price });
-            saveCarts();
-            renderCart();
-            renderCartTabs();
+            saveCarts(); renderCart(); renderCartTabs();
             $("saleQty").value = "1";
         }
 
         function removeFromCart(index) {
-            let currentCartObj = carts.items[carts.activeCartId];
-            currentCartObj.items.splice(index, 1);
-            saveCarts();
-            renderCart();
-            renderCartTabs();
+            carts.items[carts.activeCartId].items.splice(index, 1);
+            saveCarts(); renderCart(); renderCartTabs();
         }
 
         function renderCart() {
@@ -820,26 +759,16 @@
             if (!div) return;
             let currentCartObj = carts.items[carts.activeCartId];
             let items = currentCartObj.items;
-
             if (items.length === 0) {
-                div.innerHTML = `<div class="empty" style="padding:15px;">ئەم سەبەتەیە بەتاڵە. کاڵا زیاد بکە.</div>`;
+                div.innerHTML = `<div class="empty" style="padding:15px;">ئەم سەبەتەیە بەتاڵە.</div>`;
                 $("cartTotalPreview").textContent = money(0);
                 return;
             }
-
             let total = 0;
-            let html = `<div class="tablewrap"><table>
-                <tr><th>کاڵا</th><th>ژمارە</th><th>نرخی تاک</th><th>کۆی گشتی</th><th></th></tr>`;
+            let html = `<div class="tablewrap"><table><tr><th>کاڵا</th><th>ژمارە</th><th>نرخی تاک</th><th>کۆی گشتی</th><th></th></tr>`;
             items.forEach((item, idx) => {
-                let sub = item.price * item.qty;
-                total += sub;
-                html += `<tr>
-                    <td>${item.name}</td>
-                    <td>${item.qty}</td>
-                    <td>${money(item.price)}</td>
-                    <td>${money(sub)}</td>
-                    <td><button class="btn" style="color:var(--danger);" onclick="removeFromCart(${idx})">✕</button></td>
-                </tr>`;
+                let sub = item.price * item.qty; total += sub;
+                html += `<tr><td>${item.name}</td><td>${item.qty}</td><td>${money(item.price)}</td><td>${money(sub)}</td><td><button class="btn" style="color:var(--danger);" onclick="removeFromCart(${idx})">✕</button></td></tr>`;
             });
             html += `</table></div>`;
             div.innerHTML = html;
@@ -848,56 +777,36 @@
 
         function toggleCustomerRequired() {
             let type = $("saleType").value;
-            let label = $("customerLabel");
             carts.items[carts.activeCartId].type = type;
             saveCarts();
-            if (type === "credit") {
-                label.innerHTML = `ناوی کڕیار <span style="color:var(--danger);">(ئیجبارییە بۆ قەرز)</span>`;
-            } else {
-                label.innerHTML = `ناوی کڕیار (ئارەزوومەندانە)`;
-            }
+            $("customerLabel").innerHTML = type === 'credit' ? `ناوی کڕیار <span style="color:var(--danger);">(ئیجبارییە)</span>` : `ناوی کڕیار (ئارەزوومەندانە)`;
         }
 
-        function checkoutCart() {
+        async function checkoutCart() {
             let currentCartObj = carts.items[carts.activeCartId];
-            if (currentCartObj.items.length === 0) {
-                showMsg("تێبینی", "سەبەتەکەت بەتاڵە! پێویستە کاڵا زیاد بکەیت پێش تۆمارکردن.", true);
-                return;
-            }
-
+            if (currentCartObj.items.length === 0) { showMsg("تێبینی", "سەبەتە بەتاڵە!", true); return; }
             let type = $("saleType").value;
             let customerName = $("saleCustomer").value.trim();
             let customerPhone = $("saleCustomerPhone").value.trim();
 
-            if (type === "credit" && !customerName) {
-                showMsg("تێبینی", "تکایە ناوی کڕیار بنووسە بۆ تۆمارکردنی فرۆشتنی قەرز", true);
-                return;
-            }
+            if (type === "credit" && !customerName) { showMsg("تێبینی", "ناوی کڕیار بۆ قەرز ئیجبارییە", true); return; }
 
             let cartTotal = 0;
             let itemsToSave = [];
 
-            // تاقیکردنەوە و دڵنیابوونەوە لە بەردەستبوونی بڕی کاڵاکان لە کۆگادا
             for (let item of currentCartObj.items) {
                 let p = product(item.product);
-                if (!p || p.qty < item.qty) {
-                    showMsg("هەڵە", `کاڵای (${item.name}) بەو بڕە لە کۆگادا نەماوە!`, true);
-                    return;
-                }
+                if (!p || p.qty < item.qty) { showMsg("هەڵە", `کاڵای (${item.name}) بەو بڕە لە کۆگا نییە!`, true); return; }
             }
 
             for (let item of currentCartObj.items) {
                 let p = product(item.product);
                 if (p) {
                     p.qty -= item.qty;
+                    await _supabase.from('products').update({ stock: p.qty }).eq('id', p.id);
                 }
                 cartTotal += (item.price * item.qty);
-                itemsToSave.push({
-                    product: item.product,
-                    name: item.name,
-                    qty: item.qty,
-                    price: item.price
-                });
+                itemsToSave.push({ product: item.product, name: item.name, qty: item.qty, price: item.price });
             }
 
             let previousDebt = 0;
@@ -906,8 +815,7 @@
                 previousDebt = existingDebts.reduce((sum, d) => sum + d.amount, 0);
             }
 
-            let saleRecord = {
-                id: uid(),
+            let saleData = {
                 date: new Date().toISOString(),
                 items: itemsToSave,
                 total: cartTotal,
@@ -917,86 +825,62 @@
                 previousDebt: previousDebt
             };
 
-            db.sales.push(saleRecord);
+            let { data: sRes } = await _supabase.from('sales').insert([saleData]).select();
+            if(sRes) db.sales.push({ id: sRes[0].id, ...saleData });
 
             if (type === "credit") {
-                db.debts.push({
-                    id: uid(),
+                let debtData = {
                     date: new Date().toISOString(),
                     name: customerName,
                     amount: cartTotal,
-                    note: `قەرزی فاتوورەی فرۆشتن (${itemsToSave.length} کاڵا) - ${customerPhone}`
-                });
+                    note: `قەرزی فاتوورە - ${customerPhone}`
+                };
+                let { data: dRes } = await _supabase.from('debts').insert([debtData]).select();
+                if(dRes) db.debts.push({ id: dRes[0].id, ...debtData });
             }
 
-            save();
-            showMultiReceipt(saleRecord);
-
-            // پاککردنەوەی ئەم سەبەتەیە دوای فرۆشتن
-            currentCartObj.items = [];
-            currentCartObj.customer = "";
-            currentCartObj.phone = "";
-            saveCarts();
-            renderCart();
-            renderCartTabs();
-            $("saleCustomer").value = "";
-            $("saleCustomerPhone").value = "";
-            if ($("saleSearchInput")) $("saleSearchInput").value = "";
+            showMultiReceipt(db.sales[db.sales.length - 1]);
+            currentCartObj.items = []; currentCartObj.customer = ""; currentCartObj.phone = "";
+            saveCarts(); renderCart(); renderCartTabs();
+            $("saleCustomer").value = ""; $("saleCustomerPhone").value = "";
             addOptions();
+            renderAll();
         }
 
-        // --- سەبەتەی مرجوعات ---
+        // مرجوعات
         function addToReturnCart() {
             let id = $("returnProduct").value, p = product(id), q = +$("returnQty").value, price = +$("returnPrice").value;
-            if (!p || q <= 0 || price < 0) { showMsg("تێبینی", "تکایە کاڵا و بڕ بە دروستی هەڵبژێرە", true); return; }
-
+            if (!p || q <= 0 || price < 0) { showMsg("تێبینی", "تکایە زانیاری تەواو بکە", true); return; }
             currentReturnCart.push({ product: id, name: p.name, qty: q, price: price });
             renderReturnCart();
             $("returnQty").value = "1";
         }
 
-        function removeFromReturnCart(index) {
-            currentReturnCart.splice(index, 1);
-            renderReturnCart();
-        }
+        function removeFromReturnCart(index) { currentReturnCart.splice(index, 1); renderReturnCart(); }
 
         function renderReturnCart() {
             let div = $("returnCartTable");
             if (!div) return;
             if (currentReturnCart.length === 0) {
-                div.innerHTML = `<div class="empty" style="padding:15px;">سەبەتەی مرجوعات بەتاڵە.</div>`;
+                div.innerHTML = `<div class="empty" style="padding:15px;">سەبەتە بەتاڵە.</div>`;
                 $("returnCartTotalPreview").textContent = money(0);
                 return;
             }
-
             let total = 0;
-            let html = `<div class="tablewrap"><table>
-                <tr><th>کاڵا</th><th>ژمارە</th><th>نرخی گەڕاندنەوە</th><th>کۆی گشتی</th><th></th></tr>`;
+            let html = `<div class="tablewrap"><table><tr><th>کاڵا</th><th>ژمارە</th><th>نرخ</th><th>کۆی گشتی</th><th></th></tr>`;
             currentReturnCart.forEach((item, idx) => {
-                let sub = item.price * item.qty;
-                total += sub;
-                html += `<tr>
-                    <td>${item.name}</td>
-                    <td>${item.qty}</td>
-                    <td>${money(item.price)}</td>
-                    <td>${money(sub)}</td>
-                    <td><button class="btn" style="color:var(--danger);" onclick="removeFromReturnCart(${idx})">✕</button></td>
-                </tr>`;
+                let sub = item.price * item.qty; total += sub;
+                html += `<tr><td>${item.name}</td><td>${item.qty}</td><td>${money(item.price)}</td><td>${money(sub)}</td><td><button class="btn" style="color:var(--danger);" onclick="removeFromReturnCart(${idx})">✕</button></td></tr>`;
             });
             html += `</table></div>`;
             div.innerHTML = html;
             $("returnCartTotalPreview").textContent = money(total);
         }
 
-        function checkoutReturnCart() {
-            if (currentReturnCart.length === 0) {
-                showMsg("تێبینی", "سەبەتەی مرجوعات بەتاڵە! کاڵا زیاد بکە پێش تۆمارکردن.", true);
-                return;
-            }
-
+        async function checkoutReturnCart() {
+            if (currentReturnCart.length === 0) { showMsg("تێبینی", "سەبەتە بەتاڵە!", true); return; }
             let customerName = $("returnCustomer").value.trim();
             let reason = $("returnReason").value.trim();
-
             let returnTotal = 0;
             let itemsToSave = [];
 
@@ -1004,18 +888,13 @@
                 let p = product(item.product);
                 if (p) {
                     p.qty += item.qty;
+                    await _supabase.from('products').update({ stock: p.qty }).eq('id', p.id);
                 }
                 returnTotal += (item.price * item.qty);
-                itemsToSave.push({
-                    product: item.product,
-                    name: item.name,
-                    qty: item.qty,
-                    price: item.price
-                });
+                itemsToSave.push({ product: item.product, name: item.name, qty: item.qty, price: item.price });
             }
 
-            let returnRecord = {
-                id: uid(),
+            let returnData = {
                 date: new Date().toISOString(),
                 items: itemsToSave,
                 total: returnTotal,
@@ -1023,98 +902,46 @@
                 reason: reason || "نادیار"
             };
 
-            if (!db.returns) db.returns = [];
-            db.returns.push(returnRecord);
+            let { data: rRes } = await _supabase.from('returns').insert([returnData]).select();
+            if(rRes) db.returns.push({ id: rRes[0].id, ...returnData });
 
-            save();
-            showReturnReceipt(returnRecord);
-
+            showReturnReceipt(db.returns[db.returns.length - 1]);
             currentReturnCart = [];
             renderReturnCart();
-            $("returnCustomer").value = "";
-            $("returnReason").value = "";
-            if ($("returnSearchInput")) $("returnSearchInput").value = "";
-            addOptions();
+            $("returnCustomer").value = ""; $("returnReason").value = "";
+            renderAll();
         }
 
+        // وەسڵەکان
         function showReturnReceipt(r) {
             let invoiceNo = "RET-" + Math.floor(100000 + Math.random() * 900000); 
-            let items = r.items || [];
-            
             $("modalContainer").innerHTML = `
                 <div class="modal-overlay">
                     <div class="modal-box invoice-print-area">
                         <div>
                             <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 3px solid var(--danger); padding-bottom: 20px; margin-bottom: 30px;">
-                                <div style="display: flex; align-items: center; gap: 18px;">
-                                    <div style="width: 65px; height: 65px; background: #c53b3b; color: #fff; border-radius: 16px; display: flex; align-items: center; justify-content: center; font-size: 32px; font-weight: 900;">R</div>
-                                    <div>
-                                        <h1 style="color: var(--danger); font-size: 36px; font-weight: 900; margin: 0; letter-spacing: 1px;">ALTIN</h1>
-                                        <p style="color: var(--muted); margin: 4px 0 0 0; font-size: 15px; font-weight: 600;">فاتوورەی گەڕاندنەوەی کاڵا (مرجوعات)</p>
-                                    </div>
-                                </div>
-                                <div style="text-align: left;">
-                                    <h2 style="margin: 0; font-size: 24px; color: var(--text);">وەسڵی مرجوعات</h2>
-                                    <p style="margin: 8px 0 4px 0; font-size: 14px; color: var(--muted);">ژمارە: <strong style="color:var(--text); font-family: monospace;">${invoiceNo}</strong></p>
-                                    <p style="margin: 0; font-size: 14px; color: var(--muted);">بەروار: <strong style="color:var(--text);">${new Date(r.date).toLocaleDateString("ku-IQ")}</strong></p>
-                                </div>
+                                <div><h1 style="color: var(--danger); font-size: 36px; font-weight: 900; margin: 0;">ALTIN</h1><p style="color: var(--muted); margin: 4px 0 0 0;">فاتوورەی گەڕاندنەوە (مرجوعات)</p></div>
+                                <div style="text-align: left;"><h2 style="margin: 0; font-size: 24px;">وەسڵی مرجوعات</h2><p style="margin: 8px 0 4px 0; font-size: 14px;">ژمارە: <strong>${invoiceNo}</strong></p></div>
                             </div>
-                            
-                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 35px;">
-                                <div style="background: #f8fafc; padding: 16px 20px; border-radius: 14px; border: 1px solid var(--line);">
-                                    <span style="font-size: 13px; color: var(--muted); display: block; margin-bottom: 4px;">کڕیار:</span>
-                                    <strong style="font-size: 18px; color: var(--text);">${r.customer}</strong>
-                                    <span style="display: block; font-size: 14px; color: var(--muted); margin-top: 6px;">هۆکار: ${r.reason}</span>
-                                </div>
-                                <div style="background: #f8fafc; padding: 16px 20px; border-radius: 14px; border: 1px solid var(--line); text-align: left; direction: ltr;">
-                                    <span style="font-size: 13px; color: var(--muted); display: block; margin-bottom: 4px;">ژمارەی پەیوەندی فرۆشگا:</span>
-                                    <strong style="font-size: 18px; color: var(--danger);">+964 750 000 0000</strong>
-                                </div>
+                            <div style="background: #f8fafc; padding: 16px 20px; border-radius: 14px; border: 1px solid var(--line); margin-bottom: 25px;">
+                                <strong>کڕیار: ${r.customer}</strong><span style="display:block; margin-top:5px; color:var(--muted);">هۆکار: ${r.reason}</span>
                             </div>
-                            
-                            <div class="tablewrap" style="margin-bottom: 35px;">
-                                <table style="width: 100%; border-collapse: collapse; text-align: right;">
-                                    <thead>
-                                        <tr>
-                                            <th style="padding: 14px; border-bottom: 2px solid var(--line); background: #f9fafb; font-size: 15px;">#</th>
-                                            <th style="padding: 14px; border-bottom: 2px solid var(--line); background: #f9fafb; font-size: 15px;">ناوی کاڵا</th>
-                                            <th style="padding: 14px; border-bottom: 2px solid var(--line); background: #f9fafb; text-align: center; font-size: 15px;">ژمارە</th>
-                                            <th style="padding: 14px; border-bottom: 2px solid var(--line); background: #f9fafb; text-align: center; font-size: 15px;">نرخی تاک</th>
-                                            <th style="padding: 14px; border-bottom: 2px solid var(--line); background: #f9fafb; text-align: left; font-size: 15px;">کۆی گشتی</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        ${items.map((item, index) => `
-                                            <tr>
-                                                <td style="padding: 14px; border-bottom: 1px solid var(--line); font-size: 15px;">${index + 1}</td>
-                                                <td style="padding: 14px; border-bottom: 1px solid var(--line); font-weight: 600; font-size: 15px;">${item.name}</td>
-                                                <td style="padding: 14px; border-bottom: 1px solid var(--line); text-align: center; font-size: 15px;">${item.qty}</td>
-                                                <td style="padding: 14px; border-bottom: 1px solid var(--line); text-align: center; font-size: 15px;">${money(item.price)}</td>
-                                                <td style="padding: 14px; border-bottom: 1px solid var(--line); text-align: left; font-weight: bold; color: var(--danger); font-size: 15px;">${money(item.price * item.qty)}</td>
-                                            </tr>
-                                        `).join('')}
-                                    </tbody>
+                            <div class="tablewrap" style="margin-bottom: 25px;">
+                                <table>
+                                    <tr><th>کاڵا</th><th>ژمارە</th><th>نرخ</th><th>کۆی گشتی</th></tr>
+                                    ${(r.items || []).map(i => `<tr><td>${i.name}</td><td>${i.qty}</td><td>${money(i.price)}</td><td style="color:var(--danger);">${money(i.price * i.qty)}</td></tr>`).join('')}
                                 </table>
                             </div>
                         </div>
-
                         <div>
-                            <div style="display: flex; justify-content: flex-end; margin-bottom: 40px;">
-                                <div style="width: 320px; background: #fff5f5; border: 2px solid var(--danger); border-radius: 14px; padding: 18px 24px;">
-                                    <div style="display: flex; justify-content: space-between; align-items: center; font-size: 19px; font-weight: bold;">
-                                        <span>کۆی گشتی گەڕاوە:</span>
-                                        <span style="color: var(--danger); font-size: 22px;">${money(r.total)}</span>
-                                    </div>
+                            <div style="display: flex; justify-content: flex-end; margin-bottom: 30px;">
+                                <div style="background: #fff5f5; border: 2px solid var(--danger); border-radius: 14px; padding: 15px 20px;">
+                                    <strong>کۆی گشتی گەڕاوە: <span style="color:var(--danger);">${money(r.total)}</span></strong>
                                 </div>
                             </div>
-                            
-                            <div style="text-align: center; color: var(--muted); font-size: 14px; border-top: 1px solid var(--line); padding-top: 20px; margin-bottom: 20px;">
-                                <p style="margin: 0; font-weight: 500;">ئەم کاڵایانە گەڕێنرانەوە بۆ کۆگای ALTIN - دهۆک</p>
-                            </div>
-                            
                             <div style="display:flex; gap:10px;" class="no-print">
-                                <button class="primary danger text-white" style="flex:1; padding:15px; font-size:16px; background:#c53b3b;" onclick="window.print()">🖨️ چاپکردنی وەسڵی مرجوعات</button>
-                                <button class="btn" style="flex:1; padding:15px; font-size:16px; background:#e5e7eb;" onclick="closeModal()">داخستن</button>
+                                <button class="primary danger text-white" style="flex:1; padding:12px; background:#c53b3b;" onclick="window.print()">🖨️ چاپکردن</button>
+                                <button class="btn" style="flex:1; padding:12px; background:#e5e7eb;" onclick="closeModal()">داخستن</button>
                             </div>
                         </div>
                     </div>
@@ -1124,95 +951,36 @@
 
         function showMultiReceipt(s) {
             let invoiceNo = "INV-" + Math.floor(100000 + Math.random() * 900000); 
-            let items = s.items || [];
             let prevDebt = s.previousDebt !== undefined ? s.previousDebt : 0;
-            let grandTotalWithDebt = s.total + prevDebt;
-            
             $("modalContainer").innerHTML = `
                 <div class="modal-overlay">
                     <div class="modal-box invoice-print-area">
                         <div>
                             <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 3px solid var(--gold); padding-bottom: 20px; margin-bottom: 30px;">
-                                <div style="display: flex; align-items: center; gap: 18px;">
-                                    <div style="width: 65px; height: 65px; background: #15171b; color: var(--gold); border-radius: 16px; display: flex; align-items: center; justify-content: center; font-size: 32px; font-weight: 900;">A</div>
-                                    <div>
-                                        <h1 style="color: var(--gold); font-size: 36px; font-weight: 900; margin: 0; letter-spacing: 1px;">ALTIN</h1>
-                                        <p style="color: var(--muted); margin: 4px 0 0 0; font-size: 15px; font-weight: 600;">کەرەستەی تەندروستی و بۆری - دهۆک</p>
-                                    </div>
-                                </div>
-                                <div style="text-align: left;">
-                                    <h2 style="margin: 0; font-size: 24px; color: var(--text);">فاتوورەی فرۆشتن</h2>
-                                    <p style="margin: 8px 0 4px 0; font-size: 14px; color: var(--muted);">ژمارە: <strong style="color:var(--text); font-family: monospace;">${invoiceNo}</strong></p>
-                                    <p style="margin: 0; font-size: 14px; color: var(--muted);">بەروار: <strong style="color:var(--text);">${new Date(s.date).toLocaleDateString("ku-IQ")}</strong></p>
-                                </div>
+                                <div><h1 style="color: var(--gold); font-size: 36px; font-weight: 900; margin: 0;">ALTIN</h1><p style="color: var(--muted); margin: 4px 0 0 0;">کەرەستەی تەندروستی و بۆری - دهۆک</p></div>
+                                <div style="text-align: left;"><h2 style="margin: 0; font-size: 24px;">فاتوورەی فرۆشتن</h2><p style="margin: 8px 0 4px 0; font-size: 14px;">ژمارە: <strong>${invoiceNo}</strong></p></div>
                             </div>
-                            
-                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 35px;">
-                                <div style="background: #f8fafc; padding: 16px 20px; border-radius: 14px; border: 1px solid var(--line);">
-                                    <span style="font-size: 13px; color: var(--muted); display: block; margin-bottom: 4px;">بۆ بەڕێز (کڕیار):</span>
-                                    <strong style="font-size: 18px; color: var(--text);">${s.customer || "سەردانکەر"}</strong>
-                                    ${s.customerPhone ? `<span style="display: block; font-size: 14px; color: var(--muted); margin-top: 4px; direction: ltr; text-align: right;">مۆبایل: ${s.customerPhone}</span>` : ''}
-                                    <span style="display:inline-block; margin-top: 8px; padding:3px 8px; border-radius:6px; font-size:12px; font-weight:bold; background:${s.paymentType==='credit'?'#fff3e5':'#eef7f1'}; color:${s.paymentType==='credit'?'#a75c00':'#25855a'};">
-                                        ${s.paymentType === 'credit' ? 'فاتوورەی قەرز' : 'نەقد'}
-                                    </span>
-                                </div>
-                                <div style="background: #f8fafc; padding: 16px 20px; border-radius: 14px; border: 1px solid var(--line); text-align: left; direction: ltr;">
-                                    <span style="font-size: 13px; color: var(--muted); display: block; margin-bottom: 4px;">ژمارەی پەیوەندی فرۆشگا:</span>
-                                    <strong style="font-size: 18px; color: var(--gold);">+964 750 407 8741</strong>
-                                </div>
+                            <div style="background: #f8fafc; padding: 16px 20px; border-radius: 14px; border: 1px solid var(--line); margin-bottom: 25px;">
+                                <strong>بۆ بەڕێز: ${s.customer || "سەردانکەر"}</strong> ${s.customerPhone ? `<br><span style="color:var(--muted);">مۆبایل: ${s.customerPhone}</span>` : ''}
                             </div>
-                            
-                            <div class="tablewrap" style="margin-bottom: 35px;">
-                                <table style="width: 100%; border-collapse: collapse; text-align: right;">
-                                    <thead>
-                                        <tr>
-                                            <th style="padding: 14px; border-bottom: 2px solid var(--line); background: #f9fafb; font-size: 15px;">#</th>
-                                            <th style="padding: 14px; border-bottom: 2px solid var(--line); background: #f9fafb; font-size: 15px;">ناوی کاڵا</th>
-                                            <th style="padding: 14px; border-bottom: 2px solid var(--line); background: #f9fafb; text-align: center; font-size: 15px;">ژمارە</th>
-                                            <th style="padding: 14px; border-bottom: 2px solid var(--line); background: #f9fafb; text-align: center; font-size: 15px;">نرخی تاک</th>
-                                            <th style="padding: 14px; border-bottom: 2px solid var(--line); background: #f9fafb; text-align: left; font-size: 15px;">کۆی گشتی</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        ${items.map((item, index) => `
-                                            <tr>
-                                                <td style="padding: 14px; border-bottom: 1px solid var(--line); font-size: 15px;">${index + 1}</td>
-                                                <td style="padding: 14px; border-bottom: 1px solid var(--line); font-weight: 600; font-size: 15px;">${item.name}</td>
-                                                <td style="padding: 14px; border-bottom: 1px solid var(--line); text-align: center; font-size: 15px;">${item.qty}</td>
-                                                <td style="padding: 14px; border-bottom: 1px solid var(--line); text-align: center; font-size: 15px;">${money(item.price)}</td>
-                                                <td style="padding: 14px; border-bottom: 1px solid var(--line); text-align: left; font-weight: bold; color: var(--gold); font-size: 15px;">${money(item.price * item.qty)}</td>
-                                            </tr>
-                                        `).join('')}
-                                    </tbody>
+                            <div class="tablewrap" style="margin-bottom: 25px;">
+                                <table>
+                                    <tr><th>کاڵا</th><th>ژمارە</th><th>نرخ</th><th>کۆی گشتی</th></tr>
+                                    ${(s.items || []).map(i => `<tr><td>${i.name}</td><td>${i.qty}</td><td>${money(i.price)}</td><td style="color:var(--gold);">${money(i.price * i.qty)}</td></tr>`).join('')}
                                 </table>
                             </div>
                         </div>
-
                         <div>
-                            <div style="display: flex; justify-content: flex-end; margin-bottom: 40px;">
-                                <div style="width: 360px; background: #fffdf9; border: 2px solid var(--gold); border-radius: 14px; padding: 18px 24px;">
-                                    <div style="display: flex; justify-content: space-between; align-items: center; font-size: 15px; margin-bottom: 8px; color: var(--muted);">
-                                        <span>کۆی ئەم فاتوورەیە:</span>
-                                        <span style="font-weight: bold; color: var(--text);">${money(s.total)}</span>
-                                    </div>
-                                    <div style="display: flex; justify-content: space-between; align-items: center; font-size: 15px; margin-bottom: 12px; color: var(--muted); border-bottom: 1px dashed var(--line); padding-bottom: 8px;">
-                                        <span>قەرزی پێشووی کڕیار:</span>
-                                        <span style="font-weight: bold; color: var(--danger);">${money(prevDebt)}</span>
-                                    </div>
-                                    <div style="display: flex; justify-content: space-between; align-items: center; font-size: 18px; font-weight: bold;">
-                                        <span>کۆی گشتی (هەمووی):</span>
-                                        <span style="color: var(--gold); font-size: 21px;">${money(grandTotalWithDebt)}</span>
-                                    </div>
+                            <div style="display: flex; justify-content: flex-end; margin-bottom: 30px;">
+                                <div style="background: #fffdf9; border: 2px solid var(--gold); border-radius: 14px; padding: 15px 20px;">
+                                    <div>کۆی فاتوورە: <strong>${money(s.total)}</strong></div>
+                                    <div style="color:var(--danger); margin-top:5px;">قەرزی پێشوو: <strong>${money(prevDebt)}</strong></div>
+                                    <div style="margin-top:8px; font-size:18px; color:var(--gold);">کۆی گشتی: <strong>${money(s.total + prevDebt)}</strong></div>
                                 </div>
                             </div>
-                            
-                            <div style="text-align: center; color: var(--muted); font-size: 14px; border-top: 1px solid var(--line); padding-top: 20px; margin-bottom: 20px;">
-                                <p style="margin: 0; font-weight: 500;">سوپاس بۆ متمانەکردنتان بە ALTIN | کاڵای فرۆشراو ئاڵوگۆڕ دەکرێت لە ماوەی ٣ ڕۆژدا</p>
-                            </div>
-                            
                             <div style="display:flex; gap:10px;" class="no-print">
-                                <button class="primary gold" style="flex:1; padding:15px; font-size:16px;" onclick="window.print()">🖨️ چاپکردنی فاتوورە</button>
-                                <button class="btn" style="flex:1; padding:15px; font-size:16px; background:#e5e7eb;" onclick="closeModal()">داخستن</button>
+                                <button class="primary gold" style="flex:1; padding:12px;" onclick="window.print()">🖨️ چاپکردنی فاتوورە</button>
+                                <button class="btn" style="flex:1; padding:12px; background:#e5e7eb;" onclick="closeModal()">داخستن</button>
                             </div>
                         </div>
                     </div>
@@ -1220,138 +988,62 @@
             `;
         }
 
-        function showPaymentReceipt(paymentObj) {
-            $("modalContainer").innerHTML = `
-                <div class="modal-overlay">
-                    <div class="modal-box invoice-print-area">
-                        <div>
-                            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 3px solid var(--gold); padding-bottom: 20px; margin-bottom: 30px;">
-                                <div style="display: flex; align-items: center; gap: 18px;">
-                                    <div style="width: 65px; height: 65px; background: #15171b; color: var(--gold); border-radius: 16px; display: flex; align-items: center; justify-content: center; font-size: 32px; font-weight: 900;">A</div>
-                                    <div>
-                                        <h1 style="color: var(--gold); font-size: 36px; font-weight: 900; margin: 0; letter-spacing: 1px;">ALTIN</h1>
-                                        <p style="color: var(--muted); margin: 4px 0 0 0; font-size: 15px; font-weight: 600;">وەسڵی وەرگرتنی پارە (شکاندنی قەرز)</p>
-                                    </div>
-                                </div>
-                                <div style="text-align: left;">
-                                    <h2 style="margin: 0; font-size: 20px; color: var(--text);">سەندوی وەرگرتن</h2>
-                                    <p style="margin: 8px 0 4px 0; font-size: 14px; color: var(--muted);">بەروار: <strong style="color:var(--text);">${new Date(paymentObj.date).toLocaleDateString("ku-IQ")}</strong></p>
-                                </div>
-                            </div>
-
-                            <div style="background: #f8fafc; padding: 25px; border-radius: 14px; border: 1px solid var(--line); margin-bottom: 30px;">
-                                <p style="font-size: 16px; margin: 0 0 12px 0;">بەڕێز: <strong style="font-size: 18px; color: var(--text);">${paymentObj.customerName}</strong></p>
-                                <p style="font-size: 16px; margin: 0 0 12px 0;">بڕی پارەی دراو: <strong style="font-size: 22px; color: var(--ok);">${money(paymentObj.paidAmount)}</strong></p>
-                                <p style="font-size: 15px; margin: 0; color: var(--muted);">قەرزی ماوە پاش ئەم پارەدانە: <strong style="color: var(--danger);">${money(paymentObj.remainingDebt)}</strong></p>
-                            </div>
-                        </div>
-
-                        <div>
-                            <div style="text-align: center; color: var(--muted); font-size: 14px; border-top: 1px solid var(--line); padding-top: 20px; margin-bottom: 20px;">
-                                <p style="margin: 0; font-weight: 500;">سوپاس بۆ پابەندبوونتان | ALTIN - دهۆک</p>
-                            </div>
-                            <div style="display:flex; gap:10px;" class="no-print">
-                                <button class="primary gold" style="flex:1; padding:15px; font-size:16px;" onclick="window.print()">🖨️ چاپکردنی وەسڵی پارەدان</button>
-                                <button class="btn" style="flex:1; padding:15px; font-size:16px; background:#e5e7eb;" onclick="closeModal()">داخستن</button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            `;
-        }
-
-        function addPurchase() {
+        async function addPurchase() {
             let id = $("purchaseProduct").value, p = product(id), q = +$("purchaseQty").value, price = +$("purchasePrice").value;
-            if (!p || q <= 0 || price < 0) { showMsg("تێبینی", "زانیارییەکان تەواو بکە", true); return; }
-            p.qty += q;
-            p.buy = price;
-            db.purchases.push({ id: uid(), date: new Date().toISOString(), product: id, qty: q, price, supplier: $("supplier").value.trim() });
-            save();
+            if (!p || q <= 0 || price < 0) { showMsg("تێبینی", "زانیاری تەواو بکە", true); return; }
+            p.qty += q; p.buy = price;
+            await _supabase.from('products').update({ stock: p.qty, buy_price: price }).eq('id', p.id);
             
-            $("purchaseQty").value = "1";
-            $("supplier").value = "";
-            if ($("purchaseSearchInput")) $("purchaseSearchInput").value = "";
-            addOptions();
-            showMsg("سەرکەوتوو بوو", "کڕینەکە تۆمارکرا.");
+            let purData = { product: id, qty: q, price, supplier: $("supplier").value.trim(), date: new Date().toISOString() };
+            let { data } = await _supabase.from('purchases').insert([purData]).select();
+            if(data) db.purchases.push({ id: data[0].id, ...purData });
+
+            renderAll();
+            showMsg("سەرکەوتوو بوو", "کڕین تۆمارکرا.");
         }
 
-        function addExpense() {
+        async function addExpense() {
             let name = $("expenseName").value.trim(), amount = +$("expenseAmount").value;
-            if (!name || amount <= 0) { showMsg("تێبینی", "ناوی خەرجی و بڕەکەی بنووسە", true); return; }
-            db.expenses.push({ id: uid(), date: new Date().toISOString(), name, amount });
-            save();
-            $("expenseName").value = "";
-            $("expenseAmount").value = "";
+            if (!name || amount <= 0) { showMsg("تێبینی", "زانیاری تەواو بکە", true); return; }
+            let expData = { name, amount, date: new Date().toISOString() };
+            let { data } = await _supabase.from('expenses').insert([expData]).select();
+            if(data) db.expenses.push({ id: data[0].id, ...expData });
+            renderAll();
             showMsg("سەرکەوتوو بوو", "خەرجی تۆمارکرا.");
         }
 
-        function addDebt() {
+        async function addDebt() {
             let name = $("debtName").value.trim(), amount = +$("debtAmount").value;
-            if (!name || amount <= 0) { showMsg("تێبینی", "ناوی کڕیار و بڕی قەرز بنووسە", true); return; }
-            db.debts.push({ id: uid(), date: new Date().toISOString(), name, amount, note: $("debtNote").value.trim() });
-            save();
-            $("debtName").value = "";
-            $("debtAmount").value = "";
-            $("debtNote").value = "";
+            if (!name || amount <= 0) { showMsg("تێبینی", "زانیاری تەواو بکە", true); return; }
+            let debtData = { name, amount, note: $("debtNote").value.trim(), date: new Date().toISOString() };
+            let { data } = await _supabase.from('debts').insert([debtData]).select();
+            if(data) db.debts.push({ id: data[0].id, ...debtData });
+            renderAll();
             showMsg("سەرکەوتوو بوو", "قەرز تۆمارکرا.");
         }
 
-        function del(type, id) {
-            if (confirm("ئایا دڵنیایت بۆ سڕینەوە؟")) {
-                db[type] = db[type].filter(x => x.id !== id);
-                save();
+        async function del(type, id) {
+            if (confirm("ئایا دڵنیایت لە سڕینەوە؟")) {
+                await _supabase.from(type).delete().eq('id', id);
+                db[type] = db[type].filter(x => x.id != id);
+                renderAll();
             }
         }
 
-        function addPayment(id) {
-            let d = db.debts.find(x => x.id === id);
-            let n = +prompt(`قەرزی ئێستای ئەم کڕیارە (${money(d.amount)})یە.\nبڕی پارەی دراو چەندە؟`, d.amount);
+        async function addPayment(id) {
+            let d = db.debts.find(x => x.id == id);
+            let n = +prompt(`قەرز: ${money(d.amount)}\nپارەی دراو چەندە؟`, d.amount);
             if (n > 0) {
                 let paid = Math.min(n, d.amount);
                 d.amount = Math.max(0, d.amount - paid);
-                
-                let paymentRecord = {
-                    customerName: d.name,
-                    paidAmount: paid,
-                    remainingDebt: d.amount,
-                    date: new Date().toISOString()
-                };
-
-                if (d.amount === 0) db.debts = db.debts.filter(x => x.id !== id);
-                save();
-                showPaymentReceipt(paymentRecord);
-            }
-        }
-
-        function exportData() {
-            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(db));
-            const a = document.createElement('a');
-            a.href = dataStr;
-            a.download = `altin_backup_${new Date().toISOString().slice(0,10)}.json`;
-            document.body.appendChild(a);
-            a.click();
-            a.remove();
-        }
-
-        function importData(event) {
-            const reader = new FileReader();
-            if (event.target.files[0]) {
-                reader.readAsText(event.target.files[0], "UTF-8");
-                reader.onload = e => {
-                    try {
-                        const imp = JSON.parse(e.target.result);
-                        if (imp && imp.products) {
-                            db = imp;
-                            if (!db.returns) db.returns = [];
-                            save();
-                            showMsg("سەرکەوتوو بوو", "داتاکان بە سەرکەوتوویی گەڕێنرانەوە.");
-                        } else {
-                            showMsg("هەڵە", "فایلەکە هەڵەیە", true);
-                        }
-                    } catch (err) {
-                        showMsg("هەڵە", "نەتوانرا فایلەکە بخوێنرێتەوە", true);
-                    }
-                };
+                if (d.amount === 0) {
+                    await _supabase.from('debts').delete().eq('id', id);
+                    db.debts = db.debts.filter(x => x.id != id);
+                } else {
+                    await _supabase.from('debts').update({ amount: d.amount }).eq('id', id);
+                }
+                renderAll();
+                showMsg("سەرکەوتوو بوو", "پارە وەرگیرا و قەرز کەمکرایەوە.");
             }
         }
 
@@ -1360,153 +1052,68 @@
             let pq = ($("purchaseSearchInput")?.value || "").toLowerCase();
             let rq = ($("returnSearchInput")?.value || "").toLowerCase();
 
-            let saleSelect = $("saleProduct");
-            let purSelect = $("purchaseProduct");
-            let retSelect = $("returnProduct");
-
+            let saleSelect = $("saleProduct"), purSelect = $("purchaseProduct"), retSelect = $("returnProduct");
             if (saleSelect) {
-                let saleOld = saleSelect.value;
-                saleSelect.innerHTML = db.products
-                    .filter(p => p.name.toLowerCase().includes(sq) || (p.code || "").toLowerCase().includes(sq))
+                saleSelect.innerHTML = db.products.filter(p => p.name.toLowerCase().includes(sq) || (p.code || "").toLowerCase().includes(sq))
                     .map(p => `<option value="${p.id}">${p.name} — (${p.qty} دانە)</option>`).join("");
-                if (saleOld && saleSelect.querySelector(`option[value="${saleOld}"]`)) saleSelect.value = saleOld;
             }
-
             if (purSelect) {
-                let purOld = purSelect.value;
-                purSelect.innerHTML = db.products
-                    .filter(p => p.name.toLowerCase().includes(pq) || (p.code || "").toLowerCase().includes(pq))
+                purSelect.innerHTML = db.products.filter(p => p.name.toLowerCase().includes(pq) || (p.code || "").toLowerCase().includes(pq))
                     .map(p => `<option value="${p.id}">${p.name} — (${p.qty} دانە)</option>`).join("");
-                if (purOld && purSelect.querySelector(`option[value="${purOld}"]`)) purSelect.value = purOld;
             }
-
             if (retSelect) {
-                let retOld = retSelect.value;
-                retSelect.innerHTML = db.products
-                    .filter(p => p.name.toLowerCase().includes(rq) || (p.code || "").toLowerCase().includes(rq))
+                retSelect.innerHTML = db.products.filter(p => p.name.toLowerCase().includes(rq) || (p.code || "").toLowerCase().includes(rq))
                     .map(p => `<option value="${p.id}">${p.name} — (${p.qty} دانە)</option>`).join("");
-                if (retOld && retSelect.querySelector(`option[value="${retOld}"]`)) retSelect.value = retOld;
             }
-
-            updateSaleMax();
-            updatePurchaseCost();
-            updateReturnCost();
+            updateSaleMax(); updatePurchaseCost(); updateReturnCost();
         }
 
         function renderStock() {
             let q = ($("stockSearch")?.value || "").toLowerCase();
             let ps = db.products.filter(p => p.name.toLowerCase().includes(q) || (p.code || "").toLowerCase().includes(q));
             $("stockTable").innerHTML = ps.length ? `
-                <div class="tablewrap">
-                    <table>
-                        <tr><th>کاڵا</th><th>کۆد</th><th>کۆگا</th><th>کڕین</th><th>فرۆشتن</th><th class="no-print">کردار</th></tr>
-                        ${ps.map(p => `<tr>
-                            <td>${p.name}</td>
-                            <td>${p.code || "-"}</td>
-                            <td><span class="badge ${p.qty <= p.min ? 'low' : ''}">${p.qty}</span></td>
-                            <td>${money(p.buy)}</td>
-                            <td>${money(p.sell)}</td>
-                            <td class="no-print">
-                                <button class="btn" style="color:var(--gold); margin-left:5px;" onclick="editProductModal('${p.id}')">✏️ دەستکاری</button>
-                                <button class="btn" style="color:var(--danger);" onclick="del('products','${p.id}')">سڕینەوە</button>
-                            </td>
-                        </tr>`).join("")}
-                    </table>
-                </div>
+                <div class="tablewrap"><table>
+                    <tr><th>کاڵا</th><th>کۆد</th><th>کۆگا</th><th>کڕین</th><th>فرۆشتن</th><th class="no-print">کردار</th></tr>
+                    ${ps.map(p => `<tr><td>${p.name}</td><td>${p.code || "-"}</td><td><span class="badge ${p.qty <= p.min ? 'low' : ''}">${p.qty}</span></td><td>${money(p.buy)}</td><td>${money(p.sell)}</td><td class="no-print"><button class="btn" style="color:var(--gold);" onclick="editProductModal('${p.id}')">✏️</button> <button class="btn" style="color:var(--danger);" onclick="del('products','${p.id}')">✕</button></td></tr>`).join("")}
+                </table></div>
             ` : `<div class="empty">هیچ کاڵایەک نییە.</div>`;
         }
 
         function renderSales() {
             let q = ($("salesSearch")?.value || "").toLowerCase();
-            let ss = db.sales.filter(x => {
-                let names = (x.items || []).map(i => i.name).join(' ').toLowerCase();
-                return names.includes(q) || (x.customer || "").toLowerCase().includes(q) || (x.customerPhone || "").includes(q);
-            });
+            let ss = db.sales.filter(x => (x.customer || "").toLowerCase().includes(q) || (x.customerPhone || "").includes(q));
             $("salesTable").innerHTML = ss.length ? `
-                <div class="tablewrap">
-                    <table>
-                        <tr><th>بەروار</th><th>کڕیار</th><th>مۆبایل</th><th>جۆر</th><th>کاڵاکان</th><th>کۆی فرۆشتن</th><th class="no-print"></th></tr>
-                        ${ss.slice().reverse().map(x => {
-                            let itemsText = (x.items || []).map(i => `${i.name} (${i.qty})`).join(', ');
-                            return `<tr>
-                                <td>${new Date(x.date).toLocaleDateString("ku-IQ")}</td>
-                                <td>${x.customer || "-"}</td>
-                                <td style="direction:ltr; text-align:right;">${x.customerPhone || "-"}</td>
-                                <td><span class="badge ${x.paymentType==='credit'?'low':''}">${x.paymentType === 'credit' ? 'قەرز' : 'نەقد'}</span></td>
-                                <td style="max-width:200px; overflow:hidden; text-overflow:ellipsis;">${itemsText || "کاڵای کۆن"}</td>
-                                <td>${money(x.total || 0)}</td>
-                                <td class="no-print">
-                                    <button class="btn" onclick="showMultiReceipt(${JSON.stringify(x).replace(/"/g, '&quot;')})">وەسڵ</button> 
-                                    <button class="btn" style="color:var(--danger);" onclick="del('sales','${x.id}')">سڕینەوە</button>
-                                </td>
-                            </tr>`;
-                        }).join("")}
-                    </table>
-                </div>
-            ` : `<div class="empty">هیچ فرۆشتێک نییە.</div>`;
+                <div class="tablewrap"><table>
+                    <tr><th>بەروار</th><th>کڕیار</th><th>جۆر</th><th>کۆی گشتی</th><th class="no-print"></th></tr>
+                    ${ss.slice().reverse().map(x => `<tr><td>${new Date(x.date).toLocaleDateString("ku-IQ")}</td><td>${x.customer || "-"}</td><td><span class="badge ${x.paymentType==='credit'?'low':''}">${x.paymentType==='credit'?'قەرز':'نەقد'}</span></td><td>${money(x.total)}</td><td class="no-print"><button class="btn" onclick="showMultiReceipt(${JSON.stringify(x).replace(/"/g, '&quot;')})">وەسڵ</button> <button class="btn" style="color:var(--danger);" onclick="del('sales','${x.id}')">✕</button></td></tr>`).join("")}
+                </table></div>
+            ` : `<div class="empty">هیچ فرۆشتنێک نییە.</div>`;
         }
 
         function renderPurchases() {
             $("purchasesTable").innerHTML = db.purchases.length ? `
-                <div class="tablewrap">
-                    <table>
-                        <tr><th>بەروار</th><th>فرۆشیار</th><th>کاڵا</th><th>ژمارە</th><th>کۆی کڕین</th><th class="no-print"></th></tr>
-                        ${db.purchases.slice().reverse().map(x => `<tr>
-                            <td>${new Date(x.date).toLocaleDateString("ku-IQ")}</td>
-                            <td>${x.supplier || "-"}</td>
-                            <td>${product(x.product)?.name || "سڕاوەتەوە"}</td>
-                            <td>${x.qty}</td>
-                            <td>${money(x.price * x.qty)}</td>
-                            <td class="no-print"><button class="btn" style="color:var(--danger);" onclick="del('purchases','${x.id}')">سڕینەوە</button></td>
-                        </tr>`).join("")}
-                    </table>
-                </div>
+                <div class="tablewrap"><table>
+                    <tr><th>بەروار</th><th>فرۆشیار</th><th>کاڵا</th><th>ژمارە</th><th>کۆی کڕین</th><th class="no-print"></th></tr>
+                    ${db.purchases.slice().reverse().map(x => `<tr><td>${new Date(x.date).toLocaleDateString("ku-IQ")}</td><td>${x.supplier \vert{}\vert{} "-"}</td><td>${product(x.product)?.name || "سڕاوەتەوە"}</td><td>${x.qty}</td><td>${money(x.price * x.qty)}</td><td class="no-print"><button class="btn" style="color:var(--danger);" onclick="del('purchases','${x.id}')">✕</button></td></tr>`).join("")}
+                </table></div>
             ` : `<div class="empty">هیچ کڕینێک نییە.</div>`;
         }
-        
-        function renderReturns() {
-            let q = ($("returnsSearch")?.value || "").toLowerCase();
-            let rs = (db.returns || []).filter(x => {
-                let names = (x.items || []).map(i => i.name).join(' ').toLowerCase();
-                return names.includes(q) || (x.customer || "").toLowerCase().includes(q) || (x.reason || "").toLowerCase().includes(q);
-            });
 
-            $("returnsTable").innerHTML = rs.length ? `
-                <div class="tablewrap">
-                    <table>
-                        <tr><th>بەروار</th><th>کڕیار</th><th>هۆکار</th><th>کاڵاکان</th><th>کۆی پارە</th><th class="no-print">کردار</th></tr>
-                        ${rs.slice().reverse().map(x => {
-                            let itemsText = (x.items || []).map(i => `${i.name} (${i.qty})`).join(', ');
-                            return `<tr>
-                                <td>${new Date(x.date).toLocaleDateString("ku-IQ")}</td>
-                                <td>${x.customer || "-"}</td>
-                                <td>${x.reason || "-"}</td>
-                                <td style="max-width:200px; overflow:hidden; text-overflow:ellipsis;">${itemsText || "کاڵای کۆن"}</td>
-                                <td>${money(x.total || 0)}</td>
-                                <td class="no-print">
-                                    <button class="btn" style="background:#fee2e2; color:#dc2626;" onclick="showReturnReceipt(${JSON.stringify(x).replace(/"/g, '&quot;')})">وەسڵ</button>
-                                    <button class="btn" style="color:var(--danger);" onclick="del('returns','${x.id}')">سڕینەوە</button>
-                                </td>
-                            </tr>`;
-                        }).join("")}
-                    </table>
-                </div>
+        function renderReturns() {
+            $("returnsTable").innerHTML = (db.returns || []).length ? `
+                <div class="tablewrap"><table>
+                    <tr><th>بەروار</th><th>کڕیار</th><th>هۆکار</th><th>کۆی پارە</th><th class="no-print"></th></tr>
+                    ${(db.returns || []).slice().reverse().map(x => `<tr><td>${new Date(x.date).toLocaleDateString("ku-IQ")}</td><td>${x.customer}</td><td>${x.reason}</td><td>${money(x.total)}</td><td class="no-print"><button class="btn" onclick="showReturnReceipt(${JSON.stringify(x).replace(/"/g, '&quot;')})">وەسڵ</button> <button class="btn" style="color:var(--danger);" onclick="del('returns','${x.id}')">✕</button></td></tr>`).join("")}
+                </table></div>
             ` : `<div class="empty">هیچ مرجوعاتێک نییە.</div>`;
         }
 
         function renderExpenses() {
             $("expensesTable").innerHTML = db.expenses.length ? `
-                <div class="tablewrap">
-                    <table>
-                        <tr><th>بەروار</th><th>خەرجی</th><th>بڕ</th><th class="no-print"></th></tr>
-                        ${db.expenses.slice().reverse().map(x => `<tr>
-                            <td>${new Date(x.date).toLocaleDateString("ku-IQ")}</td>
-                            <td>${x.name}</td>
-                            <td>${money(x.amount)}</td>
-                            <td class="no-print"><button class="btn" style="color:var(--danger);" onclick="del('expenses','${x.id}')">سڕینەوە</button></td>
-                        </tr>`).join("")}
-                    </table>
-                </div>
+                <div class="tablewrap"><table>
+                    <tr><th>بەروار</th><th>خەرجی</th><th>بڕ</th><th class="no-print"></th></tr>
+                    ${db.expenses.slice().reverse().map(x => `<tr><td>${new Date(x.date).toLocaleDateString("ku-IQ")}</td><td>${x.name}</td><td>${money(x.amount)}</td><td class="no-print"><button class="btn" style="color:var(--danger);" onclick="del('expenses','${x.id}')">✕</button></td></tr>`).join("")}
+                </table></div>
             ` : `<div class="empty">هیچ خەرجییەک نییە.</div>`;
         }
 
@@ -1514,167 +1121,42 @@
             let q = ($("customerSearchInput")?.value || "").trim().toLowerCase();
             let div = $("customerLedgerContent");
             if (!div) return;
-
             if (!q) {
                 div.innerHTML = db.debts.length ? `
-                    <div class="tablewrap">
-                        <table>
-                            <tr><th>کڕیار</th><th>قەرز</th><th>تێبینی</th><th class="no-print">کردار</th></tr>
-                            ${db.debts.map(x => `<tr>
-                                <td>${x.name}</td>
-                                <td>${money(x.amount)}</td>
-                                <td>${x.note || "-"}</td>
-                                <td class="no-print"><button class="btn" style="background:#d1fae5; color:#065f46;" onclick="addPayment('${x.id}')">پارەدان (وەسڵ)</button> <button class="btn" style="color:var(--danger);" onclick="del('debts','${x.id}')">سڕینەوە</button></td>
-                            </tr>`).join("")}
-                        </table>
-                    </div>
-                ` : `<div class="empty">هیچ قەرزێک نییە. تکایە ناوی کڕیار بنووسە بۆ بینینی کەشف حساب.</div>`;
+                    <div class="tablewrap"><table>
+                        <tr><th>کڕیار</th><th>قەرز</th><th>تێبینی</th><th class="no-print">کردار</th></tr>
+                        ${db.debts.map(x => `<tr><td>${x.name}</td><td>${money(x.amount)}</td><td>${x.note || "-"}</td><td class="no-print"><button class="btn" style="background:#d1fae5; color:#065f46;" onclick="addPayment('${x.id}')">پارەدان</button> <button class="btn" style="color:var(--danger);" onclick="del('debts','${x.id}')">✕</button></td></tr>`).join("")}
+                    </table></div>
+                ` : `<div class="empty">هیچ قەرزێک نییە. ناوی کڕیار بنووسە.</div>`;
                 return;
             }
-
             let cDebts = db.debts.filter(x => x.name.toLowerCase().includes(q));
-            let cSales = db.sales.filter(x => (x.customer || "").toLowerCase().includes(q) || (x.customerPhone || "").includes(q));
-            let cReturns = (db.returns || []).filter(x => (x.customer || "").toLowerCase().includes(q));
-
-            let totDebt = cDebts.reduce((s, x) => s + x.amount, 0);
-            let totSales = cSales.reduce((s, x) => s + (x.total || 0), 0);
-            let totReturns = cReturns.reduce((s, x) => s + (x.total || 0), 0);
-
-            let html = `
-                <div class="customer-stats">
-                    <div class="card" style="background:#fff3e5; border-color:#fbd38d;">
-                        <small>کۆی قەرزی ماوە</small>
-                        <strong style="color:#c05621;">${money(totDebt)}</strong>
-                    </div>
-                    <div class="card" style="background:#e6fffa; border-color:#b2f5ea;">
-                        <small>کۆی کڕینەکانی (فاتورەکان)</small>
-                        <strong style="color:#2c7a7b;">${money(totSales)}</strong>
-                    </div>
-                    <div class="card" style="background:#fff5f5; border-color:#feb2b2;">
-                        <small>کۆی مرجوعات</small>
-                        <strong style="color:var(--danger);">${money(totReturns)}</strong>
-                    </div>
-                </div>
-            `;
-
-            if(cDebts.length) {
-                html += `<h3 style="margin-bottom:12px; font-size:16px; color:#c05621;">📌 قەرزەکانی ئەم کڕیارە</h3>
-                <div class="tablewrap mb-6" style="margin-bottom:25px;">
-                    <table>
-                        <tr><th>بەروار</th><th>قەرز</th><th>تێبینی</th><th class="no-print">کردار</th></tr>
-                        ${cDebts.map(x => `<tr>
-                            <td>${new Date(x.date).toLocaleDateString("ku-IQ")}</td>
-                            <td>${money(x.amount)}</td>
-                            <td>${x.note || "-"}</td>
-                            <td class="no-print"><button class="btn" style="background:#d1fae5; color:#065f46;" onclick="addPayment('${x.id}')">پارەدان (وەسڵ)</button> <button class="btn" style="color:var(--danger);" onclick="del('debts','${x.id}')">سڕینەوە</button></td>
-                        </tr>`).join("")}
-                    </table>
-                </div>`;
-            }
-
-            if(cSales.length) {
-                html += `<h3 style="margin-bottom:12px; font-size:16px; color:#2c7a7b;">🛒 فاتوورەکانی کڕین (فرۆشتنەکانی پێشوو)</h3>
-                <div class="tablewrap mb-6" style="margin-bottom:25px;">
-                    <table>
-                        <tr><th>بەروار</th><th>مۆبایل</th><th>کاڵاکان</th><th>کۆی پارە</th><th class="no-print"></th></tr>
-                        ${cSales.slice().reverse().map(x => {
-                            let itemsText = (x.items || []).map(i => `${i.name} (${i.qty})`).join(', ');
-                            return `<tr>
-                                <td>${new Date(x.date).toLocaleDateString("ku-IQ")}</td>
-                                <td style="direction:ltr; text-align:right;">${x.customerPhone || "-"}</td>
-                                <td>${itemsText || "کاڵا"}</td>
-                                <td>${money(x.total || 0)}</td>
-                                <td class="no-print"><button class="btn" style="background:#e2e8f0; color:#1e293b;" onclick="showMultiReceipt(${JSON.stringify(x).replace(/"/g, '&quot;')})">وەسڵ</button></td>
-                            </tr>`;
-                        }).join("")}
-                    </table>
-                </div>`;
-            }
-            
-            if(cReturns.length) {
-                 html += `<h3 style="margin-bottom:12px; font-size:16px; color:var(--danger);">🔄 کاڵا گەڕاوەکان (مرجوعات)</h3>
-                <div class="tablewrap mb-6" style="margin-bottom:25px;">
-                    <table>
-                        <tr><th>بەروار</th><th>هۆکار</th><th>کاڵاکان</th><th>کۆی پارە</th><th class="no-print"></th></tr>
-                        ${cReturns.slice().reverse().map(x => {
-                            let itemsText = (x.items || []).map(i => `${i.name} (${i.qty})`).join(', ');
-                            return `<tr>
-                                <td>${new Date(x.date).toLocaleDateString("ku-IQ")}</td>
-                                <td>${x.reason || "-"}</td>
-                                <td>${itemsText || "کاڵا"}</td>
-                                <td>${money(x.total || 0)}</td>
-                                <td class="no-print"><button class="btn" style="background:#fee2e2; color:#dc2626;" onclick="showReturnReceipt(${JSON.stringify(x).replace(/"/g, '&quot;')})">وەسڵ</button></td>
-                            </tr>`;
-                        }).join("")}
-                    </table>
-                </div>`;
-            }
-
-            if(!cDebts.length && !cSales.length && !cReturns.length) {
-                html += `<div class="empty">هیچ داتایەک نەدۆزرایەوە بۆ ئەم کڕیارە.</div>`;
-            }
-
-            div.innerHTML = html;
-        }
-
-        function getFilteredData() {
-            let filter = $("reportFilter")?.value || "all";
-            let now = new Date();
-            let sales = db.sales, purchases = db.purchases, expenses = db.expenses, returns = db.returns || [];
-
-            if (filter === "today") {
-                let tStr = now.toISOString().slice(0, 10);
-                sales = sales.filter(x => x.date.slice(0, 10) === tStr);
-                purchases = purchases.filter(x => x.date.slice(0, 10) === tStr);
-                expenses = expenses.filter(x => x.date.slice(0, 10) === tStr);
-                returns = returns.filter(x => x.date.slice(0, 10) === tStr);
-            } else if (filter === "month") {
-                let mStr = now.toISOString().slice(0, 7);
-                sales = sales.filter(x => x.date.slice(0, 7) === mStr);
-                purchases = purchases.filter(x => x.date.slice(0, 7) === mStr);
-                expenses = expenses.filter(x => x.date.slice(0, 7) === mStr);
-                returns = returns.filter(x => x.date.slice(0, 7) === mStr);
-            }
-
-            let sTot = sales.reduce((s, x) => s + (x.total || 0), 0);
-            
-            let gProf = 0;
-            sales.forEach(s => {
-                (s.items || []).forEach(item => {
-                    let p = product(item.product);
-                    let buyPrice = p ? p.buy : 0;
-                    gProf += (item.price - buyPrice) * item.qty;
-                });
-            });
-
-            let pTot = purchases.reduce((s, x) => s + x.price * x.qty, 0);
-            let eTot = expenses.reduce((s, x) => s + x.amount, 0);
-            
-            let rTot = returns.reduce((s, x) => s + (x.total || 0), 0);
-            
-            let rProf = 0;
-            returns.forEach(r => {
-                (r.items || []).forEach(item => {
-                    let p = product(item.product);
-                    let buyPrice = p ? p.buy : 0;
-                    rProf += (item.price - buyPrice) * item.qty;
-                });
-            });
-
-            let finalSales = sTot - rTot;
-            let finalGross = gProf - rProf;
-            let finalNet = finalGross - eTot;
-
-            return { sales: finalSales, gross: finalGross, purchases: pTot, expenses: eTot, returns: rTot, net: finalNet };
+            div.innerHTML = cDebts.length ? `
+                <div class="tablewrap"><table>
+                    <tr><th>بەروار</th><th>قەرز</th><th>تێبینی</th><th class="no-print">کردار</th></tr>
+                    ${cDebts.map(x => `<tr><td>${new Date(x.date).toLocaleDateString("ku-IQ")}</td><td>${money(x.amount)}</td><td>${x.note || "-"}</td><td class="no-print"><button class="btn" style="background:#d1fae5; color:#065f46;" onclick="addPayment('${x.id}')">پارەدان</button></td></tr>`).join("")}
+                </table></div>
+            ` : `<div class="empty">هیچ قەرزێک بۆ ئەم ناوی کڕیارە نەدۆزرایەوە.</div>`;
         }
 
         function renderReports() {
-            let t = getFilteredData();
-            $("rPurchases").textContent = money(t.purchases);
-            $("rSales").textContent = money(t.sales);
-            $("rReturns").textContent = money(t.returns);
-            $("rGross").textContent = money(t.gross);
-            $("rNet").textContent = money(t.net);
+            let sTot = db.sales.reduce((s, x) => s + (x.total || 0), 0);
+            let pTot = db.purchases.reduce((s, x) => s + x.price * x.qty, 0);
+            let eTot = db.expenses.reduce((s, x) => s + x.amount, 0);
+            let rTot = (db.returns || []).reduce((s, x) => s + (x.total || 0), 0);
+            
+            let gProf = 0;
+            db.sales.forEach(s => { (s.items || []).forEach(i => { let pr = product(i.product); gProf += (i.price - (pr ? pr.buy : 0)) * i.qty; }); });
+
+            let finalSales = sTot - rTot;
+            let finalGross = gProf;
+            let finalNet = finalGross - eTot;
+
+            $("rPurchases").textContent = money(pTot);
+            $("rSales").textContent = money(finalSales);
+            $("rReturns").textContent = money(rTot);
+            $("rGross").textContent = money(finalGross);
+            $("rNet").textContent = money(finalNet);
         }
 
         function renderAll() {
@@ -1690,37 +1172,25 @@
             renderCart();
             renderReturnCart();
 
-            let tAll = getFilteredData();
-            $("dSales").textContent = money(tAll.sales);
-            $("dGross").textContent = money(tAll.gross);
-            $("dReturns").textContent = money(tAll.returns);
-            $("dExpenses").textContent = money(tAll.expenses);
-            $("dNet").textContent = money(tAll.net);
-            $("dProducts").textContent = db.products.length;
+            let sTot = db.sales.reduce((s, x) => s + (x.total || 0), 0);
+            let rTot = (db.returns || []).reduce((s, x) => s + (x.total || 0), 0);
+            let eTot = db.expenses.reduce((s, x) => s + x.amount, 0);
+            let gProf = 0;
+            db.sales.forEach(s => { (s.items || []).forEach(i => { let pr = product(i.product); gProf += (i.price - (pr ? pr.buy : 0)) * i.qty; }); });
 
-            let totalDebt = db.debts.reduce((sum, d) => sum + d.amount, 0);
-            if($("dDebt")) $("dDebt").textContent = money(totalDebt);
+            $("dSales").textContent = money(sTot - rTot);
+            $("dGross").textContent = money(gProf);
+            $("dReturns").textContent = money(rTot);
+            $("dExpenses").textContent = money(eTot);
+            $("dNet").textContent = money(gProf - eTot);
+            $("dProducts").textContent = db.products.length;
+            $("dDebt").textContent = money(db.debts.reduce((sum, d) => sum + d.amount, 0));
 
             let low = db.products.filter(p => p.qty <= p.min);
-            $("lowStock").innerHTML = low.length ? low.map(p => `
-                <div style="display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-bottom:1px solid var(--line); font-size:14px;">
-                    <span>${p.name}</span>
-                    <span class="badge low">${p.qty} دانە</span>
-                </div>
-            `).join("") : "<div class='empty'>کۆگا لە بارودۆخێکی باشدایە.</div>";
-        }
-
-        function resetAll() {
-            if (confirm("ئایا دڵنیایت بۆ سڕینەوەی هەموو داتاکان؟")) {
-                db = { products: [], sales: [], purchases: [], expenses: [], debts: [], returns: [], payments: [] };
-                localStorage.removeItem("ALTIN_CARTS_V1");
-                save();
-                showMsg("سڕایەوە", "هەموو داتاکان بە سەرکەوتوویی سڕدرانەوە.");
-            }
+            $("lowStock").innerHTML = low.length ? low.map(p => `<div style="display:flex; justify-content:space-between; padding:10px 0; border-bottom:1px solid var(--line); font-size:14px;"><span>${p.name}</span><span class="badge low">${p.qty} دانە</span></div>`).join("") : "<div class='empty'>کۆگا لە بارودۆخێکی باشدایە.</div>";
         }
 
         $("today").textContent = new Date().toLocaleDateString("ku-IQ", { year: "numeric", month: "long", day: "numeric" });
-        renderAll();
     </script>
 </body>
 </html>
