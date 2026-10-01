@@ -198,8 +198,17 @@
             </section>
 
             <section id="sales" class="page hidden">
+                <!-- سیستەمی فرەیی سەبەتەکان (Multi-Carts / Tabs) -->
+                <div style="display:flex; gap:8px; margin-bottom:15px; overflow-x:auto; padding-bottom:5px;" id="cartTabsContainer">
+                    <!-- بە شێوەی خۆکار لەڕێی جافاسکریپتەوە دروست دەبن -->
+                </div>
+
                 <div class="panel">
-                    <h2>🛒 تۆمارکردنی فرۆشتن</h2>
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+                        <h2 id="currentCartTitle" style="margin:0;">🛒 تۆمارکردنی فرۆشتن (سەبەتەی ١)</h2>
+                        <button class="btn" style="background:var(--gold); color:#fff; font-weight:bold;" onclick="addNewCart()">+ کردنەوەی سەبەتەیەکی نوێ</button>
+                    </div>
+
                     <div class="formgrid">
                         <div>
                             <label>🔍 گەڕان بەدوای کاڵا</label>
@@ -293,7 +302,7 @@
                 </div>
             </section>
 
-            <!-- بەشی نوێی مرجوعات بە شێوازی سەبەتە و فاتوورە -->
+            <!-- بەشی مرجوعات -->
             <section id="returns" class="page hidden">
                 <div class="panel">
                     <h2>🔄 گەڕاندنەوەی کاڵا (فاتوورەی مرجوعات)</h2>
@@ -541,7 +550,78 @@
         if (!db.returns) db.returns = []; 
         if (!db.payments) db.payments = [];
         
-        let currentCart = [];
+        // --- سیستەمی چەند سەبەتەیە (Multi-Carts / Tabs) بۆ فرۆشتنی هاوکات ---
+        let carts = JSON.parse(localStorage.getItem("ALTIN_CARTS_V1") || 'null') || {
+            activeCartId: "cart_1",
+            items: {
+                "cart_1": { name: "سەبەتەی ١", items: [], type: "cash", customer: "", phone: "" }
+            }
+        };
+
+        function saveCarts() {
+            localStorage.setItem("ALTIN_CARTS_V1", JSON.stringify(carts));
+        }
+
+        function addNewCart() {
+            let keys = Object.keys(carts.items);
+            let newId = "cart_" + (keys.length + 1);
+            carts.items[newId] = { name: "سەبەتەی " + (keys.length + 1), items: [], type: "cash", customer: "", phone: "" };
+            carts.activeCartId = newId;
+            saveCarts();
+            renderCartTabs();
+            renderCart();
+        }
+
+        function switchCart(id) {
+            carts.activeCartId = id;
+            saveCarts();
+            renderCartTabs();
+            renderCart();
+        }
+
+        function removeCartTab(id, event) {
+            event.stopPropagation();
+            let keys = Object.keys(carts.items);
+            if (keys.length <= 1) {
+                showMsg("تێبینی", "ناتوانیت کۆتا سەبەتە بسڕیتەوە!", true);
+                return;
+            }
+            if (confirm("ئایا دڵنیایت لە سڕینەوەی ئەم سەبەتەیە؟")) {
+                delete carts.items[id];
+                if (carts.activeCartId === id) {
+                    carts.activeCartId = Object.keys(carts.items)[0];
+                }
+                saveCarts();
+                renderCartTabs();
+                renderCart();
+            }
+        }
+
+        function renderCartTabs() {
+            let container = $("cartTabsContainer");
+            if (!container) return;
+            let html = "";
+            for (let id in carts.items) {
+                let c = carts.items[id];
+                let isActive = carts.activeCartId === id;
+                let count = c.items.reduce((sum, i) => sum + i.qty, 0);
+                html += `
+                    <div onclick="switchCart('${id}')" style="display:flex; align-items:center; gap:8px; padding:10px 16px; background:${isActive ? 'var(--gold)' : '#fff'}; color:${isActive ? '#fff' : 'var(--text)'}; border-radius:12px; cursor:pointer; border:1px solid var(--line); font-weight:600; font-size:14px; white-space:nowrap; box-shadow:0 1px 3px rgba(0,0,0,0.05);">
+                        <span>${c.name} (${count})</span>
+                        ${Object.keys(carts.items).length > 1 ? `<span onclick="removeCartTab('${id}', event)" style="font-size:12px; opacity:0.8; padding:2px 6px; border-radius:6px; background:rgba(0,0,0,0.1);">✕</span>` : ''}
+                    </div>
+                `;
+            }
+            container.innerHTML = html;
+            let currentCartObj = carts.items[carts.activeCartId];
+            if (currentCartObj && $("currentCartTitle")) {
+                $("currentCartTitle").textContent = `🛒 تۆمارکردنی فرۆشتن (${currentCartObj.name})`;
+                if ($("saleType")) $("saleType").value = currentCartObj.type || "cash";
+                if ($("saleCustomer")) $("saleCustomer").value = currentCartObj.customer || "";
+                if ($("saleCustomerPhone")) $("saleCustomerPhone").value = currentCartObj.phone || "";
+            }
+        }
+
         let currentReturnCart = []; // سەبەتەی تایبەت بە مرجوعات
 
         function $(id) { return document.getElementById(id); }
@@ -707,32 +787,42 @@
             if (p) $("returnPrice").value = p.sell;
         }
 
-        // --- سەبەتەی فرۆشتن ---
+        // --- بەڕێوەبردنی سەبەتەی فرۆشتن ---
         function addToCart() {
             let id = $("saleProduct").value, p = product(id), q = +$("saleQty").value, price = +$("salePrice").value;
             if (!p || q <= 0 || price < 0) { showMsg("تێبینی", "تکایە کاڵا و بڕ بە دروستی هەڵبژێرە", true); return; }
 
-            let inCartQty = currentCart.filter(item => item.product === id).reduce((sum, item) => sum + item.qty, 0);
+            let currentCartObj = carts.items[carts.activeCartId];
+            let inCartQty = currentCartObj.items.filter(item => item.product === id).reduce((sum, item) => sum + item.qty, 0);
+            
             if (p.qty < (inCartQty + q)) {
                 showMsg("تێبینی", `تەنها ${p.qty - inCartQty} دانە لەم کاڵایە لە کۆگا ماوە!`, true);
                 return;
             }
 
-            currentCart.push({ product: id, name: p.name, qty: q, price: price });
+            currentCartObj.items.push({ product: id, name: p.name, qty: q, price: price });
+            saveCarts();
             renderCart();
+            renderCartTabs();
             $("saleQty").value = "1";
         }
 
         function removeFromCart(index) {
-            currentCart.splice(index, 1);
+            let currentCartObj = carts.items[carts.activeCartId];
+            currentCartObj.items.splice(index, 1);
+            saveCarts();
             renderCart();
+            renderCartTabs();
         }
 
         function renderCart() {
             let div = $("cartTable");
             if (!div) return;
-            if (currentCart.length === 0) {
-                div.innerHTML = `<div class="empty" style="padding:15px;">سەبەتەکەت بەتاڵە. کاڵا زیاد بکە.</div>`;
+            let currentCartObj = carts.items[carts.activeCartId];
+            let items = currentCartObj.items;
+
+            if (items.length === 0) {
+                div.innerHTML = `<div class="empty" style="padding:15px;">ئەم سەبەتەیە بەتاڵە. کاڵا زیاد بکە.</div>`;
                 $("cartTotalPreview").textContent = money(0);
                 return;
             }
@@ -740,7 +830,7 @@
             let total = 0;
             let html = `<div class="tablewrap"><table>
                 <tr><th>کاڵا</th><th>ژمارە</th><th>نرخی تاک</th><th>کۆی گشتی</th><th></th></tr>`;
-            currentCart.forEach((item, idx) => {
+            items.forEach((item, idx) => {
                 let sub = item.price * item.qty;
                 total += sub;
                 html += `<tr>
@@ -759,6 +849,8 @@
         function toggleCustomerRequired() {
             let type = $("saleType").value;
             let label = $("customerLabel");
+            carts.items[carts.activeCartId].type = type;
+            saveCarts();
             if (type === "credit") {
                 label.innerHTML = `ناوی کڕیار <span style="color:var(--danger);">(ئیجبارییە بۆ قەرز)</span>`;
             } else {
@@ -767,7 +859,8 @@
         }
 
         function checkoutCart() {
-            if (currentCart.length === 0) {
+            let currentCartObj = carts.items[carts.activeCartId];
+            if (currentCartObj.items.length === 0) {
                 showMsg("تێبینی", "سەبەتەکەت بەتاڵە! پێویستە کاڵا زیاد بکەیت پێش تۆمارکردن.", true);
                 return;
             }
@@ -784,7 +877,16 @@
             let cartTotal = 0;
             let itemsToSave = [];
 
-            for (let item of currentCart) {
+            // تاقیکردنەوە و دڵنیابوونەوە لە بەردەستبوونی بڕی کاڵاکان لە کۆگادا
+            for (let item of currentCartObj.items) {
+                let p = product(item.product);
+                if (!p || p.qty < item.qty) {
+                    showMsg("هەڵە", `کاڵای (${item.name}) بەو بڕە لە کۆگادا نەماوە!`, true);
+                    return;
+                }
+            }
+
+            for (let item of currentCartObj.items) {
                 let p = product(item.product);
                 if (p) {
                     p.qty -= item.qty;
@@ -798,7 +900,6 @@
                 });
             }
 
-            // وەرگرتنی قەرزی پێشووی کڕیار (بەر لە زیادکردنی ئەم فاتوورەیە) ئەگەر ناوی هەبێت
             let previousDebt = 0;
             if (customerName) {
                 let existingDebts = db.debts.filter(d => d.name.toLowerCase() === customerName.toLowerCase());
@@ -813,7 +914,7 @@
                 customer: customerName || (type === "credit" ? "کڕیاری قەرز" : ""),
                 customerPhone: customerPhone,
                 paymentType: type,
-                previousDebt: previousDebt // پاشەکەوتکردنی قەرزی پێشوو لە ناو فاتوورەدا
+                previousDebt: previousDebt
             };
 
             db.sales.push(saleRecord);
@@ -831,15 +932,20 @@
             save();
             showMultiReceipt(saleRecord);
 
-            currentCart = [];
+            // پاککردنەوەی ئەم سەبەتەیە دوای فرۆشتن
+            currentCartObj.items = [];
+            currentCartObj.customer = "";
+            currentCartObj.phone = "";
+            saveCarts();
             renderCart();
+            renderCartTabs();
             $("saleCustomer").value = "";
             $("saleCustomerPhone").value = "";
             if ($("saleSearchInput")) $("saleSearchInput").value = "";
             addOptions();
         }
 
-        // --- سەبەتەی مرجوعات (گەڕاندنەوەی کاڵا) ---
+        // --- سەبەتەی مرجوعات ---
         function addToReturnCart() {
             let id = $("returnProduct").value, p = product(id), q = +$("returnQty").value, price = +$("returnPrice").value;
             if (!p || q <= 0 || price < 0) { showMsg("تێبینی", "تکایە کاڵا و بڕ بە دروستی هەڵبژێرە", true); return; }
@@ -897,7 +1003,7 @@
             for (let item of currentReturnCart) {
                 let p = product(item.product);
                 if (p) {
-                    p.qty += item.qty; // گەڕانەوەی کاڵا بۆ کۆگا
+                    p.qty += item.qty;
                 }
                 returnTotal += (item.price * item.qty);
                 itemsToSave.push({
@@ -931,7 +1037,6 @@
             addOptions();
         }
 
-        // فاتوورەی چاپکراوی مرجوعات
         function showReturnReceipt(r) {
             let invoiceNo = "RET-" + Math.floor(100000 + Math.random() * 900000); 
             let items = r.items || [];
@@ -1017,7 +1122,6 @@
             `;
         }
 
-        // فاتوورەی فرۆشتن (لەگەڵ قەرزی پێشووی کڕیار)
         function showMultiReceipt(s) {
             let invoiceNo = "INV-" + Math.floor(100000 + Math.random() * 900000); 
             let items = s.items || [];
@@ -1582,6 +1686,7 @@
             renderExpenses();
             renderCustomerLedger();
             renderReports();
+            renderCartTabs();
             renderCart();
             renderReturnCart();
 
@@ -1608,6 +1713,7 @@
         function resetAll() {
             if (confirm("ئایا دڵنیایت بۆ سڕینەوەی هەموو داتاکان؟")) {
                 db = { products: [], sales: [], purchases: [], expenses: [], debts: [], returns: [], payments: [] };
+                localStorage.removeItem("ALTIN_CARTS_V1");
                 save();
                 showMsg("سڕایەوە", "هەموو داتاکان بە سەرکەوتوویی سڕدرانەوە.");
             }
