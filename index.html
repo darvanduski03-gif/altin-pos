@@ -798,6 +798,13 @@
                 });
             }
 
+            // وەرگرتنی قەرزی پێشووی کڕیار (بەر لە زیادکردنی ئەم فاتوورەیە) ئەگەر ناوی هەبێت
+            let previousDebt = 0;
+            if (customerName) {
+                let existingDebts = db.debts.filter(d => d.name.toLowerCase() === customerName.toLowerCase());
+                previousDebt = existingDebts.reduce((sum, d) => sum + d.amount, 0);
+            }
+
             let saleRecord = {
                 id: uid(),
                 date: new Date().toISOString(),
@@ -805,7 +812,8 @@
                 total: cartTotal,
                 customer: customerName || (type === "credit" ? "کڕیاری قەرز" : ""),
                 customerPhone: customerPhone,
-                paymentType: type
+                paymentType: type,
+                previousDebt: previousDebt // پاشەکەوتکردنی قەرزی پێشوو لە ناو فاتوورەدا
             };
 
             db.sales.push(saleRecord);
@@ -1009,10 +1017,12 @@
             `;
         }
 
-        // فاتوورەی فرۆشتن
+        // فاتوورەی فرۆشتن (لەگەڵ قەرزی پێشووی کڕیار)
         function showMultiReceipt(s) {
             let invoiceNo = "INV-" + Math.floor(100000 + Math.random() * 900000); 
             let items = s.items || [];
+            let prevDebt = s.previousDebt !== undefined ? s.previousDebt : 0;
+            let grandTotalWithDebt = s.total + prevDebt;
             
             $("modalContainer").innerHTML = `
                 <div class="modal-overlay">
@@ -1076,10 +1086,18 @@
 
                         <div>
                             <div style="display: flex; justify-content: flex-end; margin-bottom: 40px;">
-                                <div style="width: 320px; background: #fffdf9; border: 2px solid var(--gold); border-radius: 14px; padding: 18px 24px;">
-                                    <div style="display: flex; justify-content: space-between; align-items: center; font-size: 19px; font-weight: bold;">
-                                        <span>کۆی گشتی:</span>
-                                        <span style="color: var(--gold); font-size: 22px;">${money(s.total)}</span>
+                                <div style="width: 360px; background: #fffdf9; border: 2px solid var(--gold); border-radius: 14px; padding: 18px 24px;">
+                                    <div style="display: flex; justify-content: space-between; align-items: center; font-size: 15px; margin-bottom: 8px; color: var(--muted);">
+                                        <span>کۆی ئەم فاتوورەیە:</span>
+                                        <span style="font-weight: bold; color: var(--text);">${money(s.total)}</span>
+                                    </div>
+                                    <div style="display: flex; justify-content: space-between; align-items: center; font-size: 15px; margin-bottom: 12px; color: var(--muted); border-bottom: 1px dashed var(--line); padding-bottom: 8px;">
+                                        <span>قەرزی پێشووی کڕیار:</span>
+                                        <span style="font-weight: bold; color: var(--danger);">${money(prevDebt)}</span>
+                                    </div>
+                                    <div style="display: flex; justify-content: space-between; align-items: center; font-size: 18px; font-weight: bold;">
+                                        <span>کۆی گشتی (هەمووی):</span>
+                                        <span style="color: var(--gold); font-size: 21px;">${money(grandTotalWithDebt)}</span>
                                     </div>
                                 </div>
                             </div>
@@ -1530,7 +1548,6 @@
             
             let rTot = returns.reduce((s, x) => s + (x.total || 0), 0);
             
-            // حسابکردنی قازانجی گەڕاوەکان بۆ دەرکردنی لە قازانجی گشتی
             let rProf = 0;
             returns.forEach(r => {
                 (r.items || []).forEach(item => {
