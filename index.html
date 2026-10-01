@@ -6,10 +6,11 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <title>ALTIN • سیستەمی کڕین و فرۆشتن (ئۆنلاین)</title>
-    <!-- SheetJS for Excel (.xlsx) Parsing -->
+    
+    <!-- کتێبخانەکان -->
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-    <!-- Supabase JS Library -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    
     <style>
         :root{--bg:#f4f5f7;--card:#fff;--text:#17191d;--muted:#737982;--line:#e5e7eb;--gold:#b58a35;--danger:#c53b3b;--ok:#25855a}
         *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
@@ -80,7 +81,6 @@
         .modal-box{background:#fff;border-radius:20px;width:100%;max-width:750px;max-height:90vh;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:40px;box-shadow:0 20px 40px rgba(0,0,0,0.15);}
 
         @page { size: A4; margin: 15mm; }
-
         @media print {
             body { background: #fff; color: #000; margin: 0; padding: 0; }
             .side, .top, .primary, .btn, button, input, select, .no-print, .nav, #loginScreen { display: none !important; }
@@ -151,6 +151,7 @@
                 <div id="today" style="font-size:13px; font-weight:600; background:#fff; padding:8px 12px; border-radius:10px; border:1px solid var(--line);"></div>
             </div>
 
+            <!-- Dashboard -->
             <section id="dashboard" class="page">
                 <div class="cards">
                     <div class="card"><small>کۆی فرۆشتن</small><strong id="dSales">0 د.ع</strong></div>
@@ -176,6 +177,7 @@
                 </div>
             </section>
 
+            <!-- Sales -->
             <section id="sales" class="page hidden">
                 <div style="display:flex; gap:8px; margin-bottom:15px; overflow-x:auto; padding-bottom:5px;" id="cartTabsContainer"></div>
                 <div class="panel">
@@ -184,43 +186,24 @@
                         <button class="btn" style="background:var(--gold); color:#fff; font-weight:bold;" onclick="addNewCart()">+ کردنەوەی سەبەتەیەکی نوێ</button>
                     </div>
                     <div class="formgrid">
-                        <div>
-                            <label>🔍 گەڕان بەدوای کاڵا</label>
-                            <input id="saleSearchInput" placeholder="ناو یان کۆد بنووسە..." oninput="addOptions()">
-                        </div>
-                        <div>
-                            <label>📦 هەڵبژاردنی کاڵا</label>
-                            <select id="saleProduct" onchange="updateSaleMax()"></select>
-                        </div>
-                        <div>
-                            <label>ژمارە (دانە)</label>
-                            <input id="saleQty" type="number" pattern="[0-9]*" inputmode="numeric" min="1" value="1">
-                        </div>
-                        <div>
-                            <label>نرخی فرۆشتن بۆ یەک دانە (د.ع)</label>
-                            <input id="salePrice" type="number" pattern="[0-9]*" inputmode="numeric" min="0">
-                        </div>
+                        <div><label>🔍 گەڕان بەدوای کاڵا</label><input id="saleSearchInput" placeholder="ناو یان کۆد بنووسە..." oninput="addOptions()"></div>
+                        <div><label>📦 هەڵبژاردنی کاڵا</label><select id="saleProduct" onchange="updateSaleMax()"></select></div>
+                        <div><label>ژمارە (دانە)</label><input id="saleQty" type="number" pattern="[0-9]*" inputmode="numeric" min="1" value="1"></div>
+                        <div><label>نرخی فرۆشتن بۆ یەک دانە (د.ع)</label><input id="salePrice" type="number" pattern="[0-9]*" inputmode="numeric" min="0"></div>
                     </div>
                     <button class="btn gold" style="margin-top:14px; width:100%; padding:12px; color:#fff; font-weight:bold;" onclick="addToCart()">+ زیادکردن بۆ سەبەتەی فرۆشتن</button>
                     <div style="margin-top:20px; border-top:2px dashed var(--line); padding-top:15px;">
                         <h3 style="font-size:16px; margin:0 0 10px 0;">🛍 کاڵاکانی ناو سەبەتە</h3>
                         <div id="cartTable"></div>
                         <div class="formgrid" style="margin-top:15px;">
-                            <div>
-                                <label>جۆری درانی پارە</label>
+                            <div><label>جۆری درانی پارە</label>
                                 <select id="saleType" onchange="toggleCustomerRequired()">
                                     <option value="cash">نەقد (Cash)</option>
                                     <option value="credit">قەرز (Credit)</option>
                                 </select>
                             </div>
-                            <div>
-                                <label id="customerLabel">ناوی کڕیار (ئارەزوومەندانە)</label>
-                                <input id="saleCustomer" placeholder="ناوی کڕیار بنووسە...">
-                            </div>
-                            <div style="grid-column: 1 / -1;">
-                                <label>ژمارەی تەلەفۆنی کڕیار</label>
-                                <input id="saleCustomerPhone" placeholder="0750XXXXXXX" type="text" style="direction: ltr; text-align: right;">
-                            </div>
+                            <div><label id="customerLabel">ناوی کڕیار (ئارەزوومەندانە)</label><input id="saleCustomer" placeholder="ناوی کڕیار بنووسە..."></div>
+                            <div style="grid-column: 1 / -1;"><label>ژمارەی تەلەفۆنی کڕیار</label><input id="saleCustomerPhone" placeholder="0750XXXXXXX" type="text" style="direction: ltr; text-align: right;"></div>
                         </div>
                         <div style="margin-top:15px; display:flex; align-items:center; justify-content:space-between; background:#f8fafc; padding:15px; border-radius:12px; border:1px solid var(--line);">
                             <span style="font-size:15px; font-weight:600; color:var(--muted);">کۆی گشتی هەموو سەبەتەکە:</span>
@@ -238,30 +221,16 @@
                 </div>
             </section>
 
+            <!-- Purchases -->
             <section id="purchases" class="page hidden">
                 <div class="panel">
                     <h2>📥 تۆمارکردنی کڕین</h2>
                     <div class="formgrid">
-                        <div>
-                            <label>🔍 گەڕان بەدوای کاڵا</label>
-                            <input id="purchaseSearchInput" placeholder="ناو یان کۆد بنووسە..." oninput="addOptions()">
-                        </div>
-                        <div>
-                            <label>📦 هەڵبژاردنی کاڵا</label>
-                            <select id="purchaseProduct" onchange="updatePurchaseCost()"></select>
-                        </div>
-                        <div>
-                            <label>ژمارە</label>
-                            <input id="purchaseQty" type="number" pattern="[0-9]*" inputmode="numeric" min="1" value="1">
-                        </div>
-                        <div>
-                            <label>نرخی کڕین بۆ یەک دانە (د.ع)</label>
-                            <input id="purchasePrice" type="number" pattern="[0-9]*" inputmode="numeric" min="0">
-                        </div>
-                        <div style="grid-column: 1 / -1;">
-                            <label>فرۆشیار / کۆمپانیا</label>
-                            <input id="supplier" placeholder="ناوی فرۆشیار">
-                        </div>
+                        <div><label>🔍 گەڕان بەدوای کاڵا</label><input id="purchaseSearchInput" placeholder="ناو یان کۆد بنووسە..." oninput="addOptions()"></div>
+                        <div><label>📦 هەڵبژاردنی کاڵا</label><select id="purchaseProduct" onchange="updatePurchaseCost()"></select></div>
+                        <div><label>ژمارە</label><input id="purchaseQty" type="number" pattern="[0-9]*" inputmode="numeric" min="1" value="1"></div>
+                        <div><label>نرخی کڕین بۆ یەک دانە (د.ع)</label><input id="purchasePrice" type="number" pattern="[0-9]*" inputmode="numeric" min="0"></div>
+                        <div style="grid-column: 1 / -1;"><label>فرۆشیار / کۆمپانیا</label><input id="supplier" placeholder="ناوی فرۆشیار"></div>
                     </div>
                     <button class="primary gold" onclick="addPurchase()">تۆمارکردنی کڕین</button>
                 </div>
@@ -271,40 +240,23 @@
                 </div>
             </section>
 
+            <!-- Returns -->
             <section id="returns" class="page hidden">
                 <div class="panel">
                     <h2>🔄 گەڕاندنەوەی کاڵا (فاتوورەی مرجوعات)</h2>
                     <div class="formgrid">
-                        <div>
-                            <label>🔍 گەڕان بەدوای کاڵا</label>
-                            <input id="returnSearchInput" placeholder="ناو یان کۆد بنووسە..." oninput="addOptions()">
-                        </div>
-                        <div>
-                            <label>📦 هەڵبژاردنی کاڵا</label>
-                            <select id="returnProduct" onchange="updateReturnCost()"></select>
-                        </div>
-                        <div>
-                            <label>ژمارە (دانە)</label>
-                            <input id="returnQty" type="number" pattern="[0-9]*" inputmode="numeric" min="1" value="1">
-                        </div>
-                        <div>
-                            <label>نرخی گەڕاندنەوە بۆ یەک دانە (د.ع)</label>
-                            <input id="returnPrice" type="number" pattern="[0-9]*" inputmode="numeric" min="0">
-                        </div>
+                        <div><label>🔍 گەڕان بەدوای کاڵا</label><input id="returnSearchInput" placeholder="ناو یان کۆد بنووسە..." oninput="addOptions()"></div>
+                        <div><label>📦 هەڵبژاردنی کاڵا</label><select id="returnProduct" onchange="updateReturnCost()"></select></div>
+                        <div><label>ژمارە (دانە)</label><input id="returnQty" type="number" pattern="[0-9]*" inputmode="numeric" min="1" value="1"></div>
+                        <div><label>نرخی گەڕاندنەوە بۆ یەک دانە (د.ع)</label><input id="returnPrice" type="number" pattern="[0-9]*" inputmode="numeric" min="0"></div>
                     </div>
                     <button class="btn danger" style="margin-top:14px; width:100%; padding:12px; font-weight:bold;" onclick="addToReturnCart()">+ زیادکردن بۆ سەبەتەی مرجوعات</button>
                     <div style="margin-top:20px; border-top:2px dashed var(--line); padding-top:15px;">
                         <h3 style="font-size:16px; margin:0 0 10px 0;">🛍 کاڵاکانی گەڕاوە لە سەبەتە</h3>
                         <div id="returnCartTable"></div>
                         <div class="formgrid" style="margin-top:15px;">
-                            <div>
-                                <label>ناوی کڕیار</label>
-                                <input id="returnCustomer" placeholder="ناوی کڕیار بنووسە...">
-                            </div>
-                            <div>
-                                <label>هۆکاری گەڕاندنەوە</label>
-                                <input id="returnReason" placeholder="نموونە: هەڵە لە جۆر یان کێشە...">
-                            </div>
+                            <div><label>ناوی کڕیار</label><input id="returnCustomer" placeholder="ناوی کڕیار بنووسە..."></div>
+                            <div><label>هۆکاری گەڕاندنەوە</label><input id="returnReason" placeholder="نموونە: هەڵە لە جۆر یان کێشە..."></div>
                         </div>
                         <div style="margin-top:15px; display:flex; align-items:center; justify-content:space-between; background:#f8fafc; padding:15px; border-radius:12px; border:1px solid var(--line);">
                             <span style="font-size:15px; font-weight:600; color:var(--muted);">کۆی گشتی بڕی گەڕاوە:</span>
@@ -322,6 +274,7 @@
                 </div>
             </section>
 
+            <!-- Stock -->
             <section id="stock" class="page hidden">
                 <div class="panel">
                     <h2>📦 زیادکردنی کاڵای نوێ</h2>
@@ -355,6 +308,7 @@
                 </div>
             </section>
 
+            <!-- Expenses -->
             <section id="expenses" class="page hidden">
                 <div class="panel">
                     <h2>💸 تۆمارکردنی خەرجی</h2>
@@ -370,6 +324,7 @@
                 </div>
             </section>
 
+            <!-- Customers -->
             <section id="customers" class="page hidden">
                 <div class="panel">
                     <h2>👤 تۆمارکردنی قەرز بۆ کڕیار</h2>
@@ -389,6 +344,7 @@
                 </div>
             </section>
 
+            <!-- Reports -->
             <section id="reports" class="page hidden">
                 <div class="panel">
                     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; flex-wrap:wrap; gap:10px;">
@@ -410,6 +366,7 @@
                 </div>
             </section>
 
+            <!-- Settings -->
             <section id="settings" class="page hidden">
                 <div class="panel">
                     <h2>⚙️ ڕێکخستنی سیستەم و پاشەکەوت</h2>
@@ -431,11 +388,25 @@
     <div id="modalContainer"></div>
 
     <script>
-        // --- وەسڵی پەیوەندی بە Supabase ---
+        // دڵنیابوون لە دۆزینەوەی ئایدیەکان بەر لە کارپێکردن
+        function $(id) { return document.getElementById(id); }
+        const money = n => new Intl.NumberFormat("ku-IQ").format(Math.round(n || 0)) + " د.ع";
+        function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
+
+        // --- بەستنەوە بە Supabase بە شێوازێکی پارێزراو ---
         const SUPABASE_URL = "https://dxutptpuwkitjzcofhstl.supabase.co";
-        const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImR4dXRwdHB1d2tpdHzcofhstlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTA4NzQ0NDAsImV4cCI6MjEwNjQ1MDQ0MH0.hjiGeyserihKcTIU-y0vCwWNnopNqURoN6AMrqeBDhs";
+        const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImR4dXRwdHB1d2tpdHpjb2Zoc3RsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTA4NzQ0NDAsImV4cCI6MjEwNjQ1MDQ0MH0.hjiGeyserihKcTIU-y0vCwWNnopNqURoN6AMrqeBDhs";
         
-        const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        let _supabase = null;
+        try {
+            if (typeof supabase !== 'undefined') {
+                _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+            } else {
+                console.warn("ئاگاداری: کتێبخانەی Supabase لۆد نەبووە. ئینتەرنێتەکەت بپشکنە.");
+            }
+        } catch(e) {
+            console.error("کێشە هەیە لە بەستنەوەی بنکەدراوە:", e);
+        }
 
         const AUTH_USER_KEY = "ALTIN_USERNAME";
         const AUTH_PASS_KEY = "ALTIN_PASSWORD";
@@ -447,8 +418,11 @@
         }
 
         if (sessionStorage.getItem(SESSION_KEY) === "true") {
-            $("loginScreen").style.display = "none";
-            $("mainApp").style.display = "flex";
+            if ($("loginScreen")) $("loginScreen").style.display = "none";
+            if ($("mainApp")) {
+                $("mainApp").style.display = "flex";
+                loadDataFromSupabase();
+            }
         }
 
         function handleLogin() {
@@ -460,13 +434,15 @@
                 $("mainApp").style.display = "flex";
                 loadDataFromSupabase();
             } else {
-                $("loginError").style.display = "block";
+                if($("loginError")) $("loginError").style.display = "block";
             }
         }
 
-        $("loginPassword").addEventListener("keypress", function(event) {
-            if (event.key === "Enter") handleLogin();
-        });
+        if ($("loginPassword")) {
+            $("loginPassword").addEventListener("keypress", function(event) {
+                if (event.key === "Enter") handleLogin();
+            });
+        }
 
         function handleLogout() {
             if(confirm("ئایا دڵنیایت دەتەوێت بچیتە دەرەوە؟")) {
@@ -495,6 +471,10 @@
         function saveCarts() { localStorage.setItem("ALTIN_CARTS_V1", JSON.stringify(carts)); }
 
         async function loadDataFromSupabase() {
+            if (!_supabase) {
+                showMsg("کێشەی ئینتەرنێت", "نەتوانرا پەیوەندی بە بنکەدراوەوە بکرێت، تکایە ئینتەرنێت بپشکنە.", true);
+                return;
+            }
             try {
                 let [pRes, sRes, puRes, eRes, dRes, rRes] = await Promise.all([
                     _supabase.from('products').select('*'),
@@ -568,10 +548,7 @@
 
         let currentReturnCart = [];
 
-        function $(id) { return document.getElementById(id); }
-        const money = n => new Intl.NumberFormat("ku-IQ").format(Math.round(n || 0)) + " د.ع";
         function product(id) { return db.products.find(p => p.id === id || p.id == id); }
-        function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
 
         function showPage(id, btn) {
             document.querySelectorAll(".page").forEach(x => x.classList.add("hidden"));
@@ -579,7 +556,7 @@
             document.querySelectorAll(".nav button:not(.logout-btn)").forEach(x => x.classList.remove("active"));
             if (btn && !btn.classList.contains("logout-btn")) btn.classList.add("active");
             const titles = { dashboard: "داشبۆرد", sales: "فرۆشتن", purchases: "کڕین", returns: "مرجوعات", stock: "کۆگا", expenses: "خەرجی", customers: "کڕیاران و قەرز", reports: "ڕاپۆرت", settings: "ڕێکخستن" };
-            $("pageTitle").textContent = titles[id];
+            if($("pageTitle")) $("pageTitle").textContent = titles[id];
             window.scrollTo(0, 0);
         }
 
@@ -603,6 +580,7 @@
         function closeModal() { $("modalContainer").innerHTML = ""; }
 
         async function addProduct() {
+            if (!_supabase) return;
             let p = {
                 name: $("productName").value.trim(),
                 code: $("productCode").value.trim(),
@@ -631,7 +609,7 @@
             $("modalContainer").innerHTML = `
                 <div class="modal-overlay">
                     <div class="modal-box">
-                        <h2 style="margin-top:0;">✏️️ دەستکاریکردنی کاڵا</h2>
+                        <h2 style="margin-top:0;">✏ دەستکاریکردنی کاڵا</h2>
                         <div class="formgrid">
                             <div><label>ناوی کاڵا</label><input id="editName" value="${p.name}"></div>
                             <div><label>کۆد</label><input id="editCode" value="${p.code || ''}"></div>
@@ -650,6 +628,7 @@
         }
 
         async function saveEditedProduct(id) {
+            if (!_supabase) return;
             let p = product(id);
             if (!p) return;
             let newName = $("editName").value.trim();
@@ -677,6 +656,7 @@
         }
 
         async function importExcel(event) {
+            if (!_supabase) return;
             const file = event.target.files[0];
             if (!file) return;
             const reader = new FileReader();
@@ -783,6 +763,7 @@
         }
 
         async function checkoutCart() {
+            if (!_supabase) return;
             let currentCartObj = carts.items[carts.activeCartId];
             if (currentCartObj.items.length === 0) { showMsg("تێبینی", "سەبەتە بەتاڵە!", true); return; }
             let type = $("saleType").value;
@@ -847,7 +828,6 @@
             renderAll();
         }
 
-        // مرجوعات
         function addToReturnCart() {
             let id = $("returnProduct").value, p = product(id), q = +$("returnQty").value, price = +$("returnPrice").value;
             if (!p || q <= 0 || price < 0) { showMsg("تێبینی", "تکایە زانیاری تەواو بکە", true); return; }
@@ -878,6 +858,7 @@
         }
 
         async function checkoutReturnCart() {
+            if (!_supabase) return;
             if (currentReturnCart.length === 0) { showMsg("تێبینی", "سەبەتە بەتاڵە!", true); return; }
             let customerName = $("returnCustomer").value.trim();
             let reason = $("returnReason").value.trim();
@@ -912,7 +893,6 @@
             renderAll();
         }
 
-        // وەسڵەکان
         function showReturnReceipt(r) {
             let invoiceNo = "RET-" + Math.floor(100000 + Math.random() * 900000); 
             $("modalContainer").innerHTML = `
@@ -989,6 +969,7 @@
         }
 
         async function addPurchase() {
+            if (!_supabase) return;
             let id = $("purchaseProduct").value, p = product(id), q = +$("purchaseQty").value, price = +$("purchasePrice").value;
             if (!p || q <= 0 || price < 0) { showMsg("تێبینی", "زانیاری تەواو بکە", true); return; }
             p.qty += q; p.buy = price;
@@ -1003,6 +984,7 @@
         }
 
         async function addExpense() {
+            if (!_supabase) return;
             let name = $("expenseName").value.trim(), amount = +$("expenseAmount").value;
             if (!name || amount <= 0) { showMsg("تێبینی", "زانیاری تەواو بکە", true); return; }
             let expData = { name, amount, date: new Date().toISOString() };
@@ -1013,6 +995,7 @@
         }
 
         async function addDebt() {
+            if (!_supabase) return;
             let name = $("debtName").value.trim(), amount = +$("debtAmount").value;
             if (!name || amount <= 0) { showMsg("تێبینی", "زانیاری تەواو بکە", true); return; }
             let debtData = { name, amount, note: $("debtNote").value.trim(), date: new Date().toISOString() };
@@ -1023,6 +1006,7 @@
         }
 
         async function del(type, id) {
+            if (!_supabase) return;
             if (confirm("ئایا دڵنیایت لە سڕینەوە؟")) {
                 await _supabase.from(type).delete().eq('id', id);
                 db[type] = db[type].filter(x => x.id != id);
@@ -1031,6 +1015,7 @@
         }
 
         async function addPayment(id) {
+            if (!_supabase) return;
             let d = db.debts.find(x => x.id == id);
             let n = +prompt(`قەرز: ${money(d.amount)}\nپارەی دراو چەندە؟`, d.amount);
             if (n > 0) {
@@ -1152,11 +1137,11 @@
             let finalGross = gProf;
             let finalNet = finalGross - eTot;
 
-            $("rPurchases").textContent = money(pTot);
-            $("rSales").textContent = money(finalSales);
-            $("rReturns").textContent = money(rTot);
-            $("rGross").textContent = money(finalGross);
-            $("rNet").textContent = money(finalNet);
+            if($("rPurchases")) $("rPurchases").textContent = money(pTot);
+            if($("rSales")) $("rSales").textContent = money(finalSales);
+            if($("rReturns")) $("rReturns").textContent = money(rTot);
+            if($("rGross")) $("rGross").textContent = money(finalGross);
+            if($("rNet")) $("rNet").textContent = money(finalNet);
         }
 
         function renderAll() {
@@ -1178,19 +1163,19 @@
             let gProf = 0;
             db.sales.forEach(s => { (s.items || []).forEach(i => { let pr = product(i.product); gProf += (i.price - (pr ? pr.buy : 0)) * i.qty; }); });
 
-            $("dSales").textContent = money(sTot - rTot);
-            $("dGross").textContent = money(gProf);
-            $("dReturns").textContent = money(rTot);
-            $("dExpenses").textContent = money(eTot);
-            $("dNet").textContent = money(gProf - eTot);
-            $("dProducts").textContent = db.products.length;
-            $("dDebt").textContent = money(db.debts.reduce((sum, d) => sum + d.amount, 0));
+            if($("dSales")) $("dSales").textContent = money(sTot - rTot);
+            if($("dGross")) $("dGross").textContent = money(gProf);
+            if($("dReturns")) $("dReturns").textContent = money(rTot);
+            if($("dExpenses")) $("dExpenses").textContent = money(eTot);
+            if($("dNet")) $("dNet").textContent = money(gProf - eTot);
+            if($("dProducts")) $("dProducts").textContent = db.products.length;
+            if($("dDebt")) $("dDebt").textContent = money(db.debts.reduce((sum, d) => sum + d.amount, 0));
 
             let low = db.products.filter(p => p.qty <= p.min);
-            $("lowStock").innerHTML = low.length ? low.map(p => `<div style="display:flex; justify-content:space-between; padding:10px 0; border-bottom:1px solid var(--line); font-size:14px;"><span>${p.name}</span><span class="badge low">${p.qty} دانە</span></div>`).join("") : "<div class='empty'>کۆگا لە بارودۆخێکی باشدایە.</div>";
+            if($("lowStock")) $("lowStock").innerHTML = low.length ? low.map(p => `<div style="display:flex; justify-content:space-between; padding:10px 0; border-bottom:1px solid var(--line); font-size:14px;"><span>${p.name}</span><span class="badge low">${p.qty} دانە</span></div>`).join("") : "<div class='empty'>کۆگا لە بارودۆخێکی باشدایە.</div>";
         }
 
-        $("today").textContent = new Date().toLocaleDateString("ku-IQ", { year: "numeric", month: "long", day: "numeric" });
+        if($("today")) $("today").textContent = new Date().toLocaleDateString("ku-IQ", { year: "numeric", month: "long", day: "numeric" });
     </script>
 </body>
 </html>
