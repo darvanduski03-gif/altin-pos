@@ -4,8 +4,11 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <title>ALTIN • سیستەمی کڕین و فرۆشتن (ئۆنلاین)</title>
+    <link rel="icon" href="data:,">
+    
+    <title>ALTIN • سیستەمی کڕین و فرۆشتن</title>
     
     <!-- کتێبخانەکان -->
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
@@ -118,7 +121,6 @@
         <div class="login-box">
             <h1>ALTIN</h1>
             <p>سیستەمی ئۆنلاین (Supabase)</p>
-            <!-- زیادکردنی فرم بۆ ئەوەی ڕووداوی سابمیت بەباشی لە مۆبایل کاربکات -->
             <form onsubmit="event.preventDefault(); handleLogin();">
                 <input id="loginUsername" type="text" placeholder="ناوی بەکارهێنەر" autocomplete="username">
                 <input id="loginPassword" type="password" placeholder="وشەی نهێنی" autocomplete="current-password">
@@ -154,7 +156,6 @@
                 <div id="today" style="font-size:13px; font-weight:600; background:#fff; padding:8px 12px; border-radius:10px; border:1px solid var(--line);"></div>
             </div>
 
-            <!-- Dashboard -->
             <section id="dashboard" class="page">
                 <div class="cards">
                     <div class="card"><small>کۆی فرۆشتن</small><strong id="dSales">0 د.ع</strong></div>
@@ -180,7 +181,6 @@
                 </div>
             </section>
 
-            <!-- Sales -->
             <section id="sales" class="page hidden">
                 <div style="display:flex; gap:8px; margin-bottom:15px; overflow-x:auto; padding-bottom:5px;" id="cartTabsContainer"></div>
                 <div class="panel">
@@ -224,7 +224,6 @@
                 </div>
             </section>
 
-            <!-- Purchases -->
             <section id="purchases" class="page hidden">
                 <div class="panel">
                     <h2>📥 تۆمارکردنی کڕین</h2>
@@ -243,7 +242,6 @@
                 </div>
             </section>
 
-            <!-- Returns -->
             <section id="returns" class="page hidden">
                 <div class="panel">
                     <h2>🔄 گەڕاندنەوەی کاڵا (فاتوورەی مرجوعات)</h2>
@@ -277,7 +275,6 @@
                 </div>
             </section>
 
-            <!-- Stock -->
             <section id="stock" class="page hidden">
                 <div class="panel">
                     <h2>📦 زیادکردنی کاڵای نوێ</h2>
@@ -311,7 +308,6 @@
                 </div>
             </section>
 
-            <!-- Expenses -->
             <section id="expenses" class="page hidden">
                 <div class="panel">
                     <h2>💸 تۆمارکردنی خەرجی</h2>
@@ -327,7 +323,6 @@
                 </div>
             </section>
 
-            <!-- Customers -->
             <section id="customers" class="page hidden">
                 <div class="panel">
                     <h2>👤 تۆمارکردنی قەرز بۆ کڕیار</h2>
@@ -347,7 +342,6 @@
                 </div>
             </section>
 
-            <!-- Reports -->
             <section id="reports" class="page hidden">
                 <div class="panel">
                     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; flex-wrap:wrap; gap:10px;">
@@ -369,7 +363,6 @@
                 </div>
             </section>
 
-            <!-- Settings -->
             <section id="settings" class="page hidden">
                 <div class="panel">
                     <h2>⚙️ ڕێکخستنی سیستەم و پاشەکەوت</h2>
@@ -391,12 +384,10 @@
     <div id="modalContainer"></div>
 
     <script>
-        // دڵنیابوون لە دۆزینەوەی ئایدیەکان بەر لە کارپێکردن
         function $(id) { return document.getElementById(id); }
         const money = n => new Intl.NumberFormat("ku-IQ").format(Math.round(n || 0)) + " د.ع";
         function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
 
-        // --- بەستنەوە بە Supabase بە شێوازێکی پارێزراو ---
         const SUPABASE_URL = "https://dxutptpuwkitjzcofhstl.supabase.co";
         const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImR4dXRwdHB1d2tpdHpjb2Zoc3RsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTA4NzQ0NDAsImV4cCI6MjEwNjQ1MDQ0MH0.hjiGeyserihKcTIU-y0vCwWNnopNqURoN6AMrqeBDhs";
         
@@ -405,10 +396,10 @@
             if (typeof supabase !== 'undefined') {
                 _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
             } else {
-                console.warn("ئاگاداری: کتێبخانەی Supabase لۆد نەبووە. ئینتەرنێتەکەت بپشکنە.");
+                console.warn("ئاگاداری: کتێبخانەی Supabase لۆد نەبووە.");
             }
         } catch(e) {
-            console.error("کێشە هەیە لە بەستنەوەی بنکەدراوە:", e);
+            console.error("کێشە هەیە:", e);
         }
 
         const AUTH_USER_KEY = "ALTIN_USERNAME";
@@ -428,14 +419,11 @@
             }
         }
 
-        // چارەسەری نوێ بۆ دوگمەی چوونەژوورەوە لەسەر ئایفۆن
         function handleLogin() {
             let uInput = $("loginUsername");
             let pInput = $("loginPassword");
-            
             let u = uInput ? uInput.value.trim() : "";
             let p = pInput ? pInput.value.trim() : "";
-            
             let savedUser = localStorage.getItem(AUTH_USER_KEY) || "admin";
             let savedPass = localStorage.getItem(AUTH_PASS_KEY) || "12345";
 
@@ -449,7 +437,6 @@
             } else {
                 if ($("loginError")) {
                     $("loginError").style.display = "block";
-                    // سڕینەوەی پاسۆردەکە ئەگەر هەڵە بوو
                     if (pInput) pInput.value = "";
                 }
             }
@@ -482,10 +469,7 @@
         function saveCarts() { localStorage.setItem("ALTIN_CARTS_V1", JSON.stringify(carts)); }
 
         async function loadDataFromSupabase() {
-            if (!_supabase) {
-                showMsg("کێشەی ئینتەرنێت", "نەتوانرا پەیوەندی بە بنکەدراوەوە بکرێت، تکایە ئینتەرنێت بپشکنە.", true);
-                return;
-            }
+            if (!_supabase) return;
             try {
                 let [pRes, sRes, puRes, eRes, dRes, rRes] = await Promise.all([
                     _supabase.from('products').select('*'),
@@ -495,18 +479,14 @@
                     _supabase.from('debts').select('*'),
                     _supabase.from('returns').select('*')
                 ]);
-
                 if(pRes.data) db.products = pRes.data;
                 if(sRes.data) db.sales = sRes.data;
                 if(puRes.data) db.purchases = puRes.data;
                 if(eRes.data) db.expenses = eRes.data;
                 if(dRes.data) db.debts = dRes.data;
                 if(rRes.data) db.returns = rRes.data;
-
                 renderAll();
-            } catch (err) {
-                console.error("هەڵە لە هێنانی زانیاری لە Supabase:", err);
-            }
+            } catch (err) { }
         }
 
         function addNewCart() {
@@ -540,12 +520,14 @@
                 let c = carts.items[id];
                 let isActive = carts.activeCartId === id;
                 let count = c.items.reduce((sum, i) => sum + i.qty, 0);
-                html += `
-                    <div onclick="switchCart('${id}')" style="display:flex; align-items:center; gap:8px; padding:10px 16px; background:${isActive ? 'var(--gold)' : '#fff'}; color:${isActive ? '#fff' : 'var(--text)'}; border-radius:12px; cursor:pointer; border:1px solid var(--line); font-weight:600; font-size:14px; white-space:nowrap;">
-                        <span>${c.name} (${count})</span>
-                        ${Object.keys(carts.items).length > 1 ? `<span onclick="removeCartTab('${id}', event)" style="font-size:12px; opacity:0.8; padding:2px 6px; border-radius:6px; background:rgba(0,0,0,0.1);">✕</span>` : ''}
-                    </div>
-                `;
+                let activeBg = isActive ? 'var(--gold)' : '#fff';
+                let activeColor = isActive ? '#fff' : 'var(--text)';
+                html += `<div onclick="switchCart('${id}')" style="display:flex; align-items:center; gap:8px; padding:10px 16px; background:${activeBg}; color:${activeColor}; border-radius:12px; cursor:pointer; border:1px solid var(--line); font-weight:600; font-size:14px; white-space:nowrap;">`;
+                html += `<span>${c.name} (${count})</span>`;
+                if(Object.keys(carts.items).length > 1) {
+                    html += `<span onclick="removeCartTab('${id}', event)" style="font-size:12px; opacity:0.8; padding:2px 6px; border-radius:6px; background:rgba(0,0,0,0.1);">✕</span>`;
+                }
+                html += `</div>`;
             }
             container.innerHTML = html;
             let currentCartObj = carts.items[carts.activeCartId];
@@ -559,7 +541,7 @@
 
         let currentReturnCart = [];
 
-        function product(id) { return db.products.find(p => p.id === id || p.id == id); }
+        function product(id) { return db.products.find(p => p.id == id); }
 
         function showPage(id, btn) {
             document.querySelectorAll(".page").forEach(x => x.classList.add("hidden"));
@@ -574,11 +556,14 @@
         function go(id) { showPage(id, document.querySelector(`.nav button[onclick*="'${id}'"]`)); }
 
         function showMsg(title, text, isError = false) {
-            $("modalContainer").innerHTML = `
+            let iconColor = isError ? '#dc2626' : '#059669';
+            let iconBg = isError ? '#fee2e2' : '#d1fae5';
+            let iconMark = isError ? '!' : '✓';
+            let html = `
                 <div class="modal-overlay">
                     <div class="modal-box text-center">
-                        <div style="width:48px; height:48px; border-radius:50%; display:flex; align-items:center; justify-content:center; margin:0 auto 12px; font-size:20px; font-weight:bold; background:${isError ? '#fee2e2' : '#d1fae5'}; color:${isError ? '#dc2626' : '#059669'};">
-                            ${isError ? '!' : '✓'}
+                        <div style="width:48px; height:48px; border-radius:50%; display:flex; align-items:center; justify-content:center; margin:0 auto 12px; font-size:20px; font-weight:bold; background:${iconBg}; color:${iconColor};">
+                            ${iconMark}
                         </div>
                         <h3 style="font-size:18px; font-weight:bold; margin-bottom:8px;">${title}</h3>
                         <p style="font-size:14px; color:var(--muted); margin-bottom:20px;">${text}</p>
@@ -586,6 +571,7 @@
                     </div>
                 </div>
             `;
+            $("modalContainer").innerHTML = html;
         }
 
         function closeModal() { $("modalContainer").innerHTML = ""; }
@@ -601,7 +587,6 @@
                 min_stock: +$("productMin").value
             };
             if (!p.name) { showMsg("تێبینی", "تکایە ناوی کاڵا بنووسە", true); return; }
-            
             let { data, error } = await _supabase.from('products').insert([p]).select();
             if (error) {
                 showMsg("هەڵە", "نەتوانرا کاڵا لە سرڤەر پاشەکەوت بکرێت", true);
@@ -617,13 +602,14 @@
         function editProductModal(id) {
             let p = product(id);
             if (!p) return;
-            $("modalContainer").innerHTML = `
+            let codeVal = p.code || "";
+            let html = `
                 <div class="modal-overlay">
                     <div class="modal-box">
                         <h2 style="margin-top:0;">✏ دەستکاریکردنی کاڵا</h2>
                         <div class="formgrid">
                             <div><label>ناوی کاڵا</label><input id="editName" value="${p.name}"></div>
-                            <div><label>کۆد</label><input id="editCode" value="${p.code || ''}"></div>
+                            <div><label>کۆد</label><input id="editCode" value="${codeVal}"></div>
                             <div><label>نرخی کڕین</label><input id="editBuy" type="number" value="${p.buy}"></div>
                             <div><label>نرخی فرۆشتن</label><input id="editSell" type="number" value="${p.sell}"></div>
                             <div><label>بڕ لە کۆگا</label><input id="editQty" type="number" value="${p.qty}"></div>
@@ -636,6 +622,7 @@
                     </div>
                 </div>
             `;
+            $("modalContainer").innerHTML = html;
         }
 
         async function saveEditedProduct(id) {
@@ -644,26 +631,11 @@
             if (!p) return;
             let newName = $("editName").value.trim();
             if (!newName) { showMsg("تێبینی", "ناوی کاڵا ناتواندرێت بەتاڵ بێت", true); return; }
-            
-            p.name = newName;
-            p.code = $("editCode").value.trim();
-            p.buy = +$("editBuy").value || 0;
-            p.sell = +$("editSell").value || 0;
-            p.qty = +$("editQty").value || 0;
-            p.min = +$("editMin").value || 0;
-
-            await _supabase.from('products').update({
-                name: p.name,
-                code: p.code,
-                buy_price: p.buy,
-                sell_price: p.sell,
-                stock: p.qty,
-                min_stock: p.min
-            }).eq('id', id);
-
-            renderAll();
-            closeModal();
-            showMsg("سەرکەوتوو بوو", "زانیارییەکانی کاڵاکە نوێکرانەوە.");
+            p.name = newName; p.code = $("editCode").value.trim();
+            p.buy = +$("editBuy").value || 0; p.sell = +$("editSell").value || 0;
+            p.qty = +$("editQty").value || 0; p.min = +$("editMin").value || 0;
+            await _supabase.from('products').update({ name: p.name, code: p.code, buy_price: p.buy, sell_price: p.sell, stock: p.qty, min_stock: p.min }).eq('id', id);
+            renderAll(); closeModal(); showMsg("سەرکەوتوو بوو", "زانیارییەکانی کاڵاکە نوێکرانەوە.");
         }
 
         async function importExcel(event) {
@@ -676,7 +648,6 @@
                     const data = new Uint8Array(e.target.result);
                     const workbook = XLSX.read(data, { type: 'array' });
                     const json = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]], { header: 1 });
-                    
                     let addedCount = 0;
                     for (let i = 1; i < json.length; i++) {
                         let row = json[i];
@@ -686,27 +657,14 @@
                         let buy = Number(row[2]) || 0;
                         let sell = Number(row[3]) || 0;
                         let qty = Number(row[4]) || 0;
-
                         if (name) {
-                            let { data: insData } = await _supabase.from('products').insert([{
-                                name: name,
-                                code: code !== "undefined" ? code : "",
-                                buy_price: buy,
-                                sell_price: sell,
-                                stock: qty,
-                                min_stock: 2
-                            }]).select();
-                            if(insData) {
-                                db.products.push({ id: insData[0].id, name, code, buy, sell, qty, min: 2 });
-                            }
+                            let { data: insData } = await _supabase.from('products').insert([{ name: name, code: code !== "undefined" ? code : "", buy_price: buy, sell_price: sell, stock: qty, min_stock: 2 }]).select();
+                            if(insData) { db.products.push({ id: insData[0].id, name, code, buy, sell, qty, min: 2 }); }
                             addedCount++;
                         }
                     }
-                    renderAll();
-                    showMsg("سەرکەوتوو بوو", `${addedCount} کاڵا زیادکران.`);
-                } catch (err) {
-                    showMsg("هەڵە", "نەتوانرا فایلەکە بخوێنرێتەوە.", true);
-                }
+                    renderAll(); showMsg("سەرکەوتوو بوو", `${addedCount} کاڵا زیادکران.`);
+                } catch (err) { showMsg("هەڵە", "نەتوانرا فایلەکە بخوێنرێتەوە.", true); }
                 event.target.value = "";
             };
             reader.readAsArrayBuffer(file);
@@ -730,14 +688,9 @@
             if (!p || q <= 0 || price < 0) { showMsg("تێبینی", "تکایە کاڵا و بڕ بە دروستی هەڵبژێرە", true); return; }
             let currentCartObj = carts.items[carts.activeCartId];
             let inCartQty = currentCartObj.items.filter(item => item.product == id).reduce((sum, item) => sum + item.qty, 0);
-            
-            if (p.qty < (inCartQty + q)) {
-                showMsg("تێبینی", `تەنها ${p.qty - inCartQty} دانە لەم کاڵایە لە کۆگا ماوە!`, true);
-                return;
-            }
+            if (p.qty < (inCartQty + q)) { showMsg("تێبینی", `تەنها ${p.qty - inCartQty} دانە لەم کاڵایە لە کۆگا ماوە!`, true); return; }
             currentCartObj.items.push({ product: id, name: p.name, qty: q, price: price });
-            saveCarts(); renderCart(); renderCartTabs();
-            $("saleQty").value = "1";
+            saveCarts(); renderCart(); renderCartTabs(); $("saleQty").value = "1";
         }
 
         function removeFromCart(index) {
@@ -785,7 +738,6 @@
 
             let cartTotal = 0;
             let itemsToSave = [];
-
             for (let item of currentCartObj.items) {
                 let p = product(item.product);
                 if (!p || p.qty < item.qty) { showMsg("هەڵە", `کاڵای (${item.name}) بەو بڕە لە کۆگا نییە!`, true); return; }
@@ -818,33 +770,28 @@
             };
 
             let { data: sRes } = await _supabase.from('sales').insert([saleData]).select();
-            if(sRes) db.sales.push({ id: sRes[0].id, ...saleData });
+            if(sRes) {
+                db.sales.push({ id: sRes[0].id, ...saleData });
+                printSale(sRes[0].id);
+            }
 
             if (type === "credit") {
-                let debtData = {
-                    date: new Date().toISOString(),
-                    name: customerName,
-                    amount: cartTotal,
-                    note: `قەرزی فاتوورە - ${customerPhone}`
-                };
+                let debtData = { date: new Date().toISOString(), name: customerName, amount: cartTotal, note: `قەرزی فاتوورە - ${customerPhone}` };
                 let { data: dRes } = await _supabase.from('debts').insert([debtData]).select();
                 if(dRes) db.debts.push({ id: dRes[0].id, ...debtData });
             }
 
-            showMultiReceipt(db.sales[db.sales.length - 1]);
             currentCartObj.items = []; currentCartObj.customer = ""; currentCartObj.phone = "";
             saveCarts(); renderCart(); renderCartTabs();
             $("saleCustomer").value = ""; $("saleCustomerPhone").value = "";
-            addOptions();
-            renderAll();
+            addOptions(); renderAll();
         }
 
         function addToReturnCart() {
             let id = $("returnProduct").value, p = product(id), q = +$("returnQty").value, price = +$("returnPrice").value;
             if (!p || q <= 0 || price < 0) { showMsg("تێبینی", "تکایە زانیاری تەواو بکە", true); return; }
             currentReturnCart.push({ product: id, name: p.name, qty: q, price: price });
-            renderReturnCart();
-            $("returnQty").value = "1";
+            renderReturnCart(); $("returnQty").value = "1";
         }
 
         function removeFromReturnCart(index) { currentReturnCart.splice(index, 1); renderReturnCart(); }
@@ -886,27 +833,25 @@
                 itemsToSave.push({ product: item.product, name: item.name, qty: item.qty, price: item.price });
             }
 
-            let returnData = {
-                date: new Date().toISOString(),
-                items: itemsToSave,
-                total: returnTotal,
-                customer: customerName || "سەردانکەر",
-                reason: reason || "نادیار"
-            };
-
+            let returnData = { date: new Date().toISOString(), items: itemsToSave, total: returnTotal, customer: customerName || "سەردانکەر", reason: reason || "نادیار" };
             let { data: rRes } = await _supabase.from('returns').insert([returnData]).select();
-            if(rRes) db.returns.push({ id: rRes[0].id, ...returnData });
-
-            showReturnReceipt(db.returns[db.returns.length - 1]);
-            currentReturnCart = [];
-            renderReturnCart();
-            $("returnCustomer").value = ""; $("returnReason").value = "";
-            renderAll();
+            if(rRes) { db.returns.push({ id: rRes[0].id, ...returnData }); printReturn(rRes[0].id); }
+            currentReturnCart = []; renderReturnCart();
+            $("returnCustomer").value = ""; $("returnReason").value = ""; renderAll();
         }
+
+        function printSale(id) { let s = db.sales.find(x => x.id == id); if(s) showMultiReceipt(s); }
+        function printReturn(id) { let r = db.returns.find(x => x.id == id); if(r) showReturnReceipt(r); }
 
         function showReturnReceipt(r) {
             let invoiceNo = "RET-" + Math.floor(100000 + Math.random() * 900000); 
-            $("modalContainer").innerHTML = `
+            let itemsHtml = "";
+            let itemsArray = r.items || [];
+            for(let i=0; i<itemsArray.length; i++){
+                let item = itemsArray[i];
+                itemsHtml += `<tr><td>${item.name}</td><td>${item.qty}</td><td>${money(item.price)}</td><td style="color:var(--danger);">${money(item.price * item.qty)}</td></tr>`;
+            }
+            let html = `
                 <div class="modal-overlay">
                     <div class="modal-box invoice-print-area">
                         <div>
@@ -918,10 +863,7 @@
                                 <strong>کڕیار: ${r.customer}</strong><span style="display:block; margin-top:5px; color:var(--muted);">هۆکار: ${r.reason}</span>
                             </div>
                             <div class="tablewrap" style="margin-bottom: 25px;">
-                                <table>
-                                    <tr><th>کاڵا</th><th>ژمارە</th><th>نرخ</th><th>کۆی گشتی</th></tr>
-                                    ${(r.items || []).map(i => `<tr><td>${i.name}</td><td>${i.qty}</td><td>${money(i.price)}</td><td style="color:var(--danger);">${money(i.price * i.qty)}</td></tr>`).join('')}
-                                </table>
+                                <table><tr><th>کاڵا</th><th>ژمارە</th><th>نرخ</th><th>کۆی گشتی</th></tr>${itemsHtml}</table>
                             </div>
                         </div>
                         <div>
@@ -938,12 +880,19 @@
                     </div>
                 </div>
             `;
+            $("modalContainer").innerHTML = html;
         }
 
         function showMultiReceipt(s) {
             let invoiceNo = "INV-" + Math.floor(100000 + Math.random() * 900000); 
             let prevDebt = s.previousDebt !== undefined ? s.previousDebt : 0;
-            $("modalContainer").innerHTML = `
+            let itemsHtml = "";
+            let itemsArray = s.items || [];
+            for(let i=0; i<itemsArray.length; i++){
+                let item = itemsArray[i];
+                itemsHtml += `<tr><td>${item.name}</td><td>${item.qty}</td><td>${money(item.price)}</td><td style="color:var(--gold);">${money(item.price * item.qty)}</td></tr>`;
+            }
+            let html = `
                 <div class="modal-overlay">
                     <div class="modal-box invoice-print-area">
                         <div>
@@ -955,10 +904,7 @@
                                 <strong>بۆ بەڕێز: ${s.customer || "سەردانکەر"}</strong> ${s.customerPhone ? `<br><span style="color:var(--muted);">مۆبایل: ${s.customerPhone}</span>` : ''}
                             </div>
                             <div class="tablewrap" style="margin-bottom: 25px;">
-                                <table>
-                                    <tr><th>کاڵا</th><th>ژمارە</th><th>نرخ</th><th>کۆی گشتی</th></tr>
-                                    ${(s.items || []).map(i => `<tr><td>${i.name}</td><td>${i.qty}</td><td>${money(i.price)}</td><td style="color:var(--gold);">${money(i.price * i.qty)}</td></tr>`).join('')}
-                                </table>
+                                <table><tr><th>کاڵا</th><th>ژمارە</th><th>نرخ</th><th>کۆی گشتی</th></tr>${itemsHtml}</table>
                             </div>
                         </div>
                         <div>
@@ -977,6 +923,7 @@
                     </div>
                 </div>
             `;
+            $("modalContainer").innerHTML = html;
         }
 
         async function addPurchase() {
@@ -985,13 +932,10 @@
             if (!p || q <= 0 || price < 0) { showMsg("تێبینی", "زانیاری تەواو بکە", true); return; }
             p.qty += q; p.buy = price;
             await _supabase.from('products').update({ stock: p.qty, buy_price: price }).eq('id', p.id);
-            
             let purData = { product: id, qty: q, price, supplier: $("supplier").value.trim(), date: new Date().toISOString() };
             let { data } = await _supabase.from('purchases').insert([purData]).select();
             if(data) db.purchases.push({ id: data[0].id, ...purData });
-
-            renderAll();
-            showMsg("سەرکەوتوو بوو", "کڕین تۆمارکرا.");
+            renderAll(); showMsg("سەرکەوتوو بوو", "کڕین تۆمارکرا.");
         }
 
         async function addExpense() {
@@ -1001,8 +945,7 @@
             let expData = { name, amount, date: new Date().toISOString() };
             let { data } = await _supabase.from('expenses').insert([expData]).select();
             if(data) db.expenses.push({ id: data[0].id, ...expData });
-            renderAll();
-            showMsg("سەرکەوتوو بوو", "خەرجی تۆمارکرا.");
+            renderAll(); showMsg("سەرکەوتوو بوو", "خەرجی تۆمارکرا.");
         }
 
         async function addDebt() {
@@ -1012,8 +955,7 @@
             let debtData = { name, amount, note: $("debtNote").value.trim(), date: new Date().toISOString() };
             let { data } = await _supabase.from('debts').insert([debtData]).select();
             if(data) db.debts.push({ id: data[0].id, ...debtData });
-            renderAll();
-            showMsg("سەرکەوتوو بوو", "قەرز تۆمارکرا.");
+            renderAll(); showMsg("سەرکەوتوو بوو", "قەرز تۆمارکرا.");
         }
 
         async function del(type, id) {
@@ -1038,8 +980,7 @@
                 } else {
                     await _supabase.from('debts').update({ amount: d.amount }).eq('id', id);
                 }
-                renderAll();
-                showMsg("سەرکەوتوو بوو", "پارە وەرگیرا و قەرز کەمکرایەوە.");
+                renderAll(); showMsg("سەرکەوتوو بوو", "پارە وەرگیرا و قەرز کەمکرایەوە.");
             }
         }
 
@@ -1050,89 +991,159 @@
 
             let saleSelect = $("saleProduct"), purSelect = $("purchaseProduct"), retSelect = $("returnProduct");
             if (saleSelect) {
-                saleSelect.innerHTML = db.products.filter(p => p.name.toLowerCase().includes(sq) || (p.code || "").toLowerCase().includes(sq))
-                    .map(p => `<option value="${p.id}">${p.name} — (${p.qty} دانە)</option>`).join("");
+                let html = "";
+                let sArr = db.products.filter(p => p.name.toLowerCase().includes(sq) || (p.code || "").toLowerCase().includes(sq));
+                for(let i=0; i<sArr.length; i++){ html += `<option value="${sArr[i].id}">${sArr[i].name} — (${sArr[i].qty} دانە)</option>`; }
+                saleSelect.innerHTML = html;
             }
             if (purSelect) {
-                purSelect.innerHTML = db.products.filter(p => p.name.toLowerCase().includes(pq) || (p.code || "").toLowerCase().includes(pq))
-                    .map(p => `<option value="${p.id}">${p.name} — (${p.qty} دانە)</option>`).join("");
+                let html = "";
+                let pArr = db.products.filter(p => p.name.toLowerCase().includes(pq) || (p.code || "").toLowerCase().includes(pq));
+                for(let i=0; i<pArr.length; i++){ html += `<option value="${pArr[i].id}">${pArr[i].name} — (${pArr[i].qty} دانە)</option>`; }
+                purSelect.innerHTML = html;
             }
             if (retSelect) {
-                retSelect.innerHTML = db.products.filter(p => p.name.toLowerCase().includes(rq) || (p.code || "").toLowerCase().includes(rq))
-                    .map(p => `<option value="${p.id}">${p.name} — (${p.qty} دانە)</option>`).join("");
+                let html = "";
+                let rArr = db.products.filter(p => p.name.toLowerCase().includes(rq) || (p.code || "").toLowerCase().includes(rq));
+                for(let i=0; i<rArr.length; i++){ html += `<option value="${rArr[i].id}">${rArr[i].name} — (${rArr[i].qty} دانە)</option>`; }
+                retSelect.innerHTML = html;
             }
             updateSaleMax(); updatePurchaseCost(); updateReturnCost();
         }
 
         function renderStock() {
-            let q = ($("stockSearch")?.value || "").toLowerCase();
+            let q = ($("stockSearch") ? $("stockSearch").value : "").toLowerCase();
             let ps = db.products.filter(p => p.name.toLowerCase().includes(q) || (p.code || "").toLowerCase().includes(q));
-            $("stockTable").innerHTML = ps.length ? `
-                <div class="tablewrap"><table>
-                    <tr><th>کاڵا</th><th>کۆد</th><th>کۆگا</th><th>کڕین</th><th>فرۆشتن</th><th class="no-print">کردار</th></tr>
-                    ${ps.map(p => `<tr><td>${p.name}</td><td>${p.code || "-"}</td><td><span class="badge ${p.qty <= p.min ? 'low' : ''}">${p.qty}</span></td><td>${money(p.buy)}</td><td>${money(p.sell)}</td><td class="no-print"><button class="btn" style="color:var(--gold);" onclick="editProductModal('${p.id}')">✏️</button> <button class="btn" style="color:var(--danger);" onclick="del('products','${p.id}')">✕</button></td></tr>`).join("")}
-                </table></div>
-            ` : `<div class="empty">هیچ کاڵایەک نییە.</div>`;
+            let html = "";
+            if(ps.length === 0){
+                html = '<div class="empty">هیچ کاڵایەک نییە.</div>';
+            } else {
+                html += '<div class="tablewrap"><table><tr><th>کاڵا</th><th>کۆد</th><th>کۆگا</th><th>کڕین</th><th>فرۆشتن</th><th class="no-print">کردار</th></tr>';
+                for(let i=0; i<ps.length; i++){
+                    let p = ps[i];
+                    let badge = p.qty <= p.min ? 'low' : '';
+                    let c = p.code || "-";
+                    html += `<tr><td>${p.name}</td><td>${c}</td><td><span class="badge ${badge}">${p.qty}</span></td><td>${money(p.buy)}</td><td>${money(p.sell)}</td><td class="no-print"><button class="btn" style="color:var(--gold);" onclick="editProductModal('${p.id}')">✏️</button> <button class="btn" style="color:var(--danger);" onclick="del('products','${p.id}')">✕</button></td></tr>`;
+                }
+                html += '</table></div>';
+            }
+            $("stockTable").innerHTML = html;
         }
 
         function renderSales() {
-            let q = ($("salesSearch")?.value || "").toLowerCase();
+            let q = ($("salesSearch") ? $("salesSearch").value : "").toLowerCase();
             let ss = db.sales.filter(x => (x.customer || "").toLowerCase().includes(q) || (x.customerPhone || "").includes(q));
-            $("salesTable").innerHTML = ss.length ? `
-                <div class="tablewrap"><table>
-                    <tr><th>بەروار</th><th>کڕیار</th><th>جۆر</th><th>کۆی گشتی</th><th class="no-print"></th></tr>
-                    ${ss.slice().reverse().map(x => `<tr><td>${new Date(x.date).toLocaleDateString("ku-IQ")}</td><td>${x.customer || "-"}</td><td><span class="badge ${x.paymentType==='credit'?'low':''}">${x.paymentType==='credit'?'قەرز':'نەقد'}</span></td><td>${money(x.total)}</td><td class="no-print"><button class="btn" onclick="showMultiReceipt(${JSON.stringify(x).replace(/"/g, '&quot;')})">وەسڵ</button> <button class="btn" style="color:var(--danger);" onclick="del('sales','${x.id}')">✕</button></td></tr>`).join("")}
-                </table></div>
-            ` : `<div class="empty">هیچ فرۆشتنێک نییە.</div>`;
+            let html = "";
+            if(ss.length === 0){
+                html = '<div class="empty">هیچ فرۆشتنێک نییە.</div>';
+            } else {
+                html += '<div class="tablewrap"><table><tr><th>بەروار</th><th>کڕیار</th><th>جۆر</th><th>کۆی گشتی</th><th class="no-print"></th></tr>';
+                let rev = ss.slice().reverse();
+                for(let i=0; i<rev.length; i++){
+                    let x = rev[i];
+                    let d = new Date(x.date).toLocaleDateString("ku-IQ");
+                    let c = x.customer || "-";
+                    let badgeClass = x.paymentType === 'credit' ? 'low' : '';
+                    let badgeText = x.paymentType === 'credit' ? 'قەرز' : 'نەقد';
+                    let m = money(x.total);
+                    html += `<tr><td>${d}</td><td>${c}</td><td><span class="badge ${badgeClass}">${badgeText}</span></td><td>${m}</td><td class="no-print"><button class="btn" onclick="printSale('${x.id}')">وەسڵ</button> <button class="btn" style="color:var(--danger);" onclick="del('sales','${x.id}')">✕</button></td></tr>`;
+                }
+                html += '</table></div>';
+            }
+            $("salesTable").innerHTML = html;
         }
 
         function renderPurchases() {
-            $("purchasesTable").innerHTML = db.purchases.length ? `
-                <div class="tablewrap"><table>
-                    <tr><th>بەروار</th><th>فرۆشیار</th><th>کاڵا</th><th>ژمارە</th><th>کۆی کڕین</th><th class="no-print"></th></tr>
-                    ${db.purchases.slice().reverse().map(x => `<tr><td>${new Date(x.date).toLocaleDateString("ku-IQ")}</td><td>${x.supplier \vert{}\vert{} "-"}</td><td>${product(x.product)?.name || "سڕاوەتەوە"}</td><td>${x.qty}</td><td>${money(x.price * x.qty)}</td><td class="no-print"><button class="btn" style="color:var(--danger);" onclick="del('purchases','${x.id}')">✕</button></td></tr>`).join("")}
-                </table></div>
-            ` : `<div class="empty">هیچ کڕینێک نییە.</div>`;
+            let html = "";
+            if (db.purchases.length === 0) {
+                html = '<div class="empty">هیچ کڕینێک نییە.</div>';
+            } else {
+                html += '<div class="tablewrap"><table><tr><th>بەروار</th><th>فرۆشیار</th><th>کاڵا</th><th>ژمارە</th><th>کۆی کڕین</th><th class="no-print"></th></tr>';
+                let rev = db.purchases.slice().reverse();
+                for (let i=0; i<rev.length; i++) {
+                    let x = rev[i];
+                    let p = product(x.product);
+                    let pName = p ? p.name : "سڕاوەتەوە";
+                    let d = new Date(x.date).toLocaleDateString("ku-IQ");
+                    let sup = x.supplier || "-";
+                    let total = money(x.price * x.qty);
+                    html += `<tr><td>${d}</td><td>${sup}</td><td>${pName}</td><td>${x.qty}</td><td>${total}</td><td class="no-print"><button class="btn" style="color:var(--danger);" onclick="del('purchases','${x.id}')">✕</button></td></tr>`;
+                }
+                html += '</table></div>';
+            }
+            $("purchasesTable").innerHTML = html;
         }
 
         function renderReturns() {
-            $("returnsTable").innerHTML = (db.returns || []).length ? `
-                <div class="tablewrap"><table>
-                    <tr><th>بەروار</th><th>کڕیار</th><th>هۆکار</th><th>کۆی پارە</th><th class="no-print"></th></tr>
-                    ${(db.returns || []).slice().reverse().map(x => `<tr><td>${new Date(x.date).toLocaleDateString("ku-IQ")}</td><td>${x.customer}</td><td>${x.reason}</td><td>${money(x.total)}</td><td class="no-print"><button class="btn" onclick="showReturnReceipt(${JSON.stringify(x).replace(/"/g, '&quot;')})">وەسڵ</button> <button class="btn" style="color:var(--danger);" onclick="del('returns','${x.id}')">✕</button></td></tr>`).join("")}
-                </table></div>
-            ` : `<div class="empty">هیچ مرجوعاتێک نییە.</div>`;
+            let html = "";
+            let rets = db.returns || [];
+            if(rets.length === 0){
+                html = '<div class="empty">هیچ مرجوعاتێک نییە.</div>';
+            } else {
+                html += '<div class="tablewrap"><table><tr><th>بەروار</th><th>کڕیار</th><th>هۆکار</th><th>کۆی پارە</th><th class="no-print"></th></tr>';
+                let rev = rets.slice().reverse();
+                for(let i=0; i<rev.length; i++){
+                    let x = rev[i];
+                    let d = new Date(x.date).toLocaleDateString("ku-IQ");
+                    let m = money(x.total);
+                    html += `<tr><td>${d}</td><td>${x.customer}</td><td>${x.reason}</td><td>${m}</td><td class="no-print"><button class="btn" onclick="printReturn('${x.id}')">وەسڵ</button> <button class="btn" style="color:var(--danger);" onclick="del('returns','${x.id}')">✕</button></td></tr>`;
+                }
+                html += '</table></div>';
+            }
+            $("returnsTable").innerHTML = html;
         }
 
         function renderExpenses() {
-            $("expensesTable").innerHTML = db.expenses.length ? `
-                <div class="tablewrap"><table>
-                    <tr><th>بەروار</th><th>خەرجی</th><th>بڕ</th><th class="no-print"></th></tr>
-                    ${db.expenses.slice().reverse().map(x => `<tr><td>${new Date(x.date).toLocaleDateString("ku-IQ")}</td><td>${x.name}</td><td>${money(x.amount)}</td><td class="no-print"><button class="btn" style="color:var(--danger);" onclick="del('expenses','${x.id}')">✕</button></td></tr>`).join("")}
-                </table></div>
-            ` : `<div class="empty">هیچ خەرجییەک نییە.</div>`;
+            let html = "";
+            if(db.expenses.length === 0){
+                html = '<div class="empty">هیچ خەرجییەک نییە.</div>';
+            } else {
+                html += '<div class="tablewrap"><table><tr><th>بەروار</th><th>خەرجی</th><th>بڕ</th><th class="no-print"></th></tr>';
+                let rev = db.expenses.slice().reverse();
+                for(let i=0; i<rev.length; i++){
+                    let x = rev[i];
+                    let d = new Date(x.date).toLocaleDateString("ku-IQ");
+                    let m = money(x.amount);
+                    html += `<tr><td>${d}</td><td>${x.name}</td><td>${m}</td><td class="no-print"><button class="btn" style="color:var(--danger);" onclick="del('expenses','${x.id}')">✕</button></td></tr>`;
+                }
+                html += '</table></div>';
+            }
+            $("expensesTable").innerHTML = html;
         }
 
         function renderCustomerLedger() {
-            let q = ($("customerSearchInput")?.value || "").trim().toLowerCase();
+            let q = ($("customerSearchInput") ? $("customerSearchInput").value : "").trim().toLowerCase();
             let div = $("customerLedgerContent");
             if (!div) return;
+            let html = "";
             if (!q) {
-                div.innerHTML = db.debts.length ? `
-                    <div class="tablewrap"><table>
-                        <tr><th>کڕیار</th><th>قەرز</th><th>تێبینی</th><th class="no-print">کردار</th></tr>
-                        ${db.debts.map(x => `<tr><td>${x.name}</td><td>${money(x.amount)}</td><td>${x.note || "-"}</td><td class="no-print"><button class="btn" style="background:#d1fae5; color:#065f46;" onclick="addPayment('${x.id}')">پارەدان</button> <button class="btn" style="color:var(--danger);" onclick="del('debts','${x.id}')">✕</button></td></tr>`).join("")}
-                    </table></div>
-                ` : `<div class="empty">هیچ قەرزێک نییە. ناوی کڕیار بنووسە.</div>`;
-                return;
+                if(db.debts.length === 0){
+                    html = '<div class="empty">هیچ قەرزێک نییە. ناوی کڕیار بنووسە.</div>';
+                } else {
+                    html += '<div class="tablewrap"><table><tr><th>کڕیار</th><th>قەرز</th><th>تێبینی</th><th class="no-print">کردار</th></tr>';
+                    for(let i=0; i<db.debts.length; i++){
+                        let x = db.debts[i];
+                        let note = x.note || "-";
+                        html += `<tr><td>${x.name}</td><td>${money(x.amount)}</td><td>${note}</td><td class="no-print"><button class="btn" style="background:#d1fae5; color:#065f46;" onclick="addPayment('${x.id}')">پارەدان</button> <button class="btn" style="color:var(--danger);" onclick="del('debts','${x.id}')">✕</button></td></tr>`;
+                    }
+                    html += '</table></div>';
+                }
+            } else {
+                let cDebts = db.debts.filter(x => x.name.toLowerCase().includes(q));
+                if(cDebts.length === 0){
+                    html = '<div class="empty">هیچ قەرزێک بۆ ئەم ناوی کڕیارە نەدۆزرایەوە.</div>';
+                } else {
+                    html += '<div class="tablewrap"><table><tr><th>بەروار</th><th>قەرز</th><th>تێبینی</th><th class="no-print">کردار</th></tr>';
+                    for(let i=0; i<cDebts.length; i++){
+                        let x = cDebts[i];
+                        let d = new Date(x.date).toLocaleDateString("ku-IQ");
+                        let note = x.note || "-";
+                        html += `<tr><td>${d}</td><td>${money(x.amount)}</td><td>${note}</td><td class="no-print"><button class="btn" style="background:#d1fae5; color:#065f46;" onclick="addPayment('${x.id}')">پارەدان</button></td></tr>`;
+                    }
+                    html += '</table></div>';
+                }
             }
-            let cDebts = db.debts.filter(x => x.name.toLowerCase().includes(q));
-            div.innerHTML = cDebts.length ? `
-                <div class="tablewrap"><table>
-                    <tr><th>بەروار</th><th>قەرز</th><th>تێبینی</th><th class="no-print">کردار</th></tr>
-                    ${cDebts.map(x => `<tr><td>${new Date(x.date).toLocaleDateString("ku-IQ")}</td><td>${money(x.amount)}</td><td>${x.note || "-"}</td><td class="no-print"><button class="btn" style="background:#d1fae5; color:#065f46;" onclick="addPayment('${x.id}')">پارەدان</button></td></tr>`).join("")}
-                </table></div>
-            ` : `<div class="empty">هیچ قەرزێک بۆ ئەم ناوی کڕیارە نەدۆزرایەوە.</div>`;
+            div.innerHTML = html;
         }
 
         function renderReports() {
@@ -1140,14 +1151,11 @@
             let pTot = db.purchases.reduce((s, x) => s + x.price * x.qty, 0);
             let eTot = db.expenses.reduce((s, x) => s + x.amount, 0);
             let rTot = (db.returns || []).reduce((s, x) => s + (x.total || 0), 0);
-            
             let gProf = 0;
             db.sales.forEach(s => { (s.items || []).forEach(i => { let pr = product(i.product); gProf += (i.price - (pr ? pr.buy : 0)) * i.qty; }); });
-
             let finalSales = sTot - rTot;
             let finalGross = gProf;
             let finalNet = finalGross - eTot;
-
             if($("rPurchases")) $("rPurchases").textContent = money(pTot);
             if($("rSales")) $("rSales").textContent = money(finalSales);
             if($("rReturns")) $("rReturns").textContent = money(rTot);
@@ -1183,7 +1191,17 @@
             if($("dDebt")) $("dDebt").textContent = money(db.debts.reduce((sum, d) => sum + d.amount, 0));
 
             let low = db.products.filter(p => p.qty <= p.min);
-            if($("lowStock")) $("lowStock").innerHTML = low.length ? low.map(p => `<div style="display:flex; justify-content:space-between; padding:10px 0; border-bottom:1px solid var(--line); font-size:14px;"><span>${p.name}</span><span class="badge low">${p.qty} دانە</span></div>`).join("") : "<div class='empty'>کۆگا لە بارودۆخێکی باشدایە.</div>";
+            if($("lowStock")) {
+                let html = "";
+                if(low.length === 0){
+                    html = "<div class='empty'>کۆگا لە بارودۆخێکی باشدایە.</div>";
+                } else {
+                    for(let i=0; i<low.length; i++){
+                        html += `<div style="display:flex; justify-content:space-between; padding:10px 0; border-bottom:1px solid var(--line); font-size:14px;"><span>${low[i].name}</span><span class="badge low">${low[i].qty} دانە</span></div>`;
+                    }
+                }
+                $("lowStock").innerHTML = html;
+            }
         }
 
         if($("today")) $("today").textContent = new Date().toLocaleDateString("ku-IQ", { year: "numeric", month: "long", day: "numeric" });
