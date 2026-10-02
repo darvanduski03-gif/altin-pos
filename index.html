@@ -8,11 +8,10 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <link rel="icon" href="data:,">
     
-    <title>ALTIN • سیستەمی کڕین و فرۆشتن</title>
+    <title>ALTIN • سیستەمی کڕین و فرۆشتن | Cloudflare Edition</title>
     
-    <!-- کتێبخانەکان -->
+    <!-- کتێبخانەیا ئێکسڵ -->
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     
     <style>
         :root{--bg:#f4f5f7;--card:#fff;--text:#17191d;--muted:#737982;--line:#e5e7eb;--gold:#b58a35;--danger:#c53b3b;--ok:#25855a}
@@ -77,7 +76,6 @@
         .hidden{display:none;}
         .search{max-width:300px;font-size:14px;padding:10px 14px;width:100%;}
         .reportgrid{display:grid;grid-template-columns:repeat(5,1fr);gap:14px;}
-        .customer-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:20px;}
         .setting{display:flex;justify-content:space-between;align-items:center;padding:16px 0;border-bottom:1px solid var(--line);font-size:15px;}
 
         .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;z-index:100;padding:16px;-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px);}
@@ -108,7 +106,7 @@
             .nav button{min-width:75px;padding:10px 8px;font-size:11px;text-align:center;margin:0;border-radius:8px;white-space:nowrap;}
             .logout-btn { margin-top:0 !important; }
             .main{margin:0;width:100%;padding:14px;padding-bottom:90px;}
-            .cards, .reportgrid, .customer-stats{grid-template-columns:repeat(2,1fr);gap:10px;}
+            .cards, .reportgrid{grid-template-columns:repeat(2,1fr);gap:10px;}
             .grid{grid-template-columns:1fr;}
             .top{flex-direction:column;align-items:flex-start;gap:8px;}
             .formgrid{grid-template-columns:1fr;}
@@ -120,7 +118,7 @@
     <div id="loginScreen">
         <div class="login-box">
             <h1>ALTIN</h1>
-            <p>سیستەمی ئۆنلاین (Supabase)</p>
+            <p>سیستەمی ئۆنلاین (Cloudflare Engine)</p>
             <form onsubmit="event.preventDefault(); handleLogin();">
                 <input id="loginUsername" type="text" placeholder="ناوی بەکارهێنەر" autocomplete="username">
                 <input id="loginPassword" type="password" placeholder="وشەی نهێنی" autocomplete="current-password">
@@ -151,7 +149,7 @@
             <div class="top">
                 <div>
                     <h1 id="pageTitle">داشبۆرد</h1>
-                    <small>سیستەمی ئۆنلاین بۆ بەڕێوەبردنی کۆگا و فرۆشتن</small>
+                    <small>سیستەمی ئۆنلاین بۆ بەڕێوەبردنی کۆگا و فرۆشتن • ALTIN Cloudflare</small>
                 </div>
                 <div id="today" style="font-size:13px; font-weight:600; background:#fff; padding:8px 12px; border-radius:10px; border:1px solid var(--line);"></div>
             </div>
@@ -367,7 +365,7 @@
                 <div class="panel">
                     <h2>⚙️ ڕێکخستنی سیستەم و پاشەکەوت</h2>
                     <div class="setting"><span>یەکەی پارە</span><strong style="color:var(--gold);">دیناری عێراقی (د.ع)</strong></div>
-                    <div class="setting"><span>شێوازی پاشەکەوت</span><strong style="color:var(--ok);">ئۆنلاین لەسەر Supabase ☁️</strong></div>
+                    <div class="setting"><span>شێوازی پاشەکەوت</span><strong style="color:var(--ok);">ئۆنلاین لەسەر Cloudflare D1 ☁️</strong></div>
                     <div style="margin-top:20px; background:#f8fafc; padding:20px; border-radius:16px; border:1px solid var(--line);">
                         <h3 style="margin:0 0 10px 0; font-size:16px;">🔐 گۆڕینی ناوی بەکارهێنەر و وشەی نهێنی</h3>
                         <div class="formgrid" style="margin-bottom:15px;">
@@ -388,20 +386,6 @@
         const money = n => new Intl.NumberFormat("ku-IQ").format(Math.round(n || 0)) + " د.ع";
         function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
 
-        const SUPABASE_URL = "https://dxutptpuwkitjzcofhstl.supabase.co";
-        const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImR4dXRwdHB1d2tpdHpjb2Zoc3RsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTA4NzQ0NDAsImV4cCI6MjEwNjQ1MDQ0MH0.hjiGeyserihKcTIU-y0vCwWNnopNqURoN6AMrqeBDhs";
-        
-        let _supabase = null;
-        try {
-            if (typeof supabase !== 'undefined') {
-                _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-            } else {
-                console.warn("ئاگاداری: کتێبخانەی Supabase لۆد نەبووە.");
-            }
-        } catch(e) {
-            console.error("کێشە هەیە:", e);
-        }
-
         const AUTH_USER_KEY = "ALTIN_USERNAME";
         const AUTH_PASS_KEY = "ALTIN_PASSWORD";
         const SESSION_KEY = "ALTIN_AUTH";
@@ -415,7 +399,7 @@
             if ($("loginScreen")) $("loginScreen").style.display = "none";
             if ($("mainApp")) {
                 $("mainApp").style.display = "flex";
-                loadDataFromSupabase();
+                loadDataFromCloudflare();
             }
         }
 
@@ -432,7 +416,7 @@
                 if ($("loginScreen")) $("loginScreen").style.display = "none";
                 if ($("mainApp")) {
                     $("mainApp").style.display = "flex";
-                    loadDataFromSupabase();
+                    loadDataFromCloudflare();
                 }
             } else {
                 if ($("loginError")) {
@@ -468,25 +452,22 @@
 
         function saveCarts() { localStorage.setItem("ALTIN_CARTS_V1", JSON.stringify(carts)); }
 
-        async function loadDataFromSupabase() {
-            if (!_supabase) return;
+        async function loadDataFromCloudflare() {
             try {
-                let [pRes, sRes, puRes, eRes, dRes, rRes] = await Promise.all([
-                    _supabase.from('products').select('*'),
-                    _supabase.from('sales').select('*'),
-                    _supabase.from('purchases').select('*'),
-                    _supabase.from('expenses').select('*'),
-                    _supabase.from('debts').select('*'),
-                    _supabase.from('returns').select('*')
-                ]);
-                if(pRes.data) db.products = pRes.data;
-                if(sRes.data) db.sales = sRes.data;
-                if(puRes.data) db.purchases = puRes.data;
-                if(eRes.data) db.expenses = eRes.data;
-                if(dRes.data) db.debts = dRes.data;
-                if(rRes.data) db.returns = rRes.data;
-                renderAll();
-            } catch (err) { }
+                let res = await fetch('/api/all');
+                if (res.ok) {
+                    let data = await res.json();
+                    db.products = data.products || [];
+                    db.sales = data.sales || [];
+                    db.purchases = data.purchases || [];
+                    db.expenses = data.expenses || [];
+                    db.debts = data.debts || [];
+                    db.returns = data.returns || [];
+                    renderAll();
+                }
+            } catch (err) {
+                console.error("کێشە لە خوێندنەوەی Cloudflare API:", err);
+            }
         }
 
         function addNewCart() {
@@ -577,25 +558,31 @@
         function closeModal() { $("modalContainer").innerHTML = ""; }
 
         async function addProduct() {
-            if (!_supabase) return;
             let p = {
+                id: uid(),
                 name: $("productName").value.trim(),
                 code: $("productCode").value.trim(),
-                buy_price: +$("productBuy").value,
-                sell_price: +$("productSell").value,
-                stock: +$("productQty").value,
-                min_stock: +$("productMin").value
+                buy: +$("productBuy").value,
+                sell: +$("productSell").value,
+                qty: +$("productQty").value,
+                min: +$("productMin").value
             };
             if (!p.name) { showMsg("تێبینی", "تکایە ناوی کاڵا بنووسە", true); return; }
-            let { data, error } = await _supabase.from('products').insert([p]).select();
-            if (error) {
-                showMsg("هەڵە", "نەتوانرا کاڵا لە سرڤەر پاشەکەوت بکرێت", true);
+            
+            let res = await fetch('/api/products', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(p)
+            });
+
+            if (!res.ok) {
+                showMsg("هەڵە", "نەتوانرا کاڵا ل سەر Cloudflare پاشەکەوت بکەرێت", true);
             } else {
-                if(data) db.products.push({ id: data[0].id, name: data[0].name, code: data[0].code, buy: data[0].buy_price, sell: data[0].sell_price, qty: data[0].stock, min: data[0].min_stock });
+                db.products.push(p);
                 ["productName", "productCode", "productBuy", "productSell", "productQty"].forEach(id => $(id).value = "");
                 $("productMin").value = 2;
                 renderAll();
-                showMsg("سەرکەوتوو بوو", "کاڵاکە لە کۆگای ئۆنلاین زیادکرا.");
+                showMsg("سەرکەوتوو بوو", "کاڵاکە لە کۆگایا Cloudflare زیادکرا.");
             }
         }
 
@@ -626,7 +613,6 @@
         }
 
         async function saveEditedProduct(id) {
-            if (!_supabase) return;
             let p = product(id);
             if (!p) return;
             let newName = $("editName").value.trim();
@@ -634,12 +620,17 @@
             p.name = newName; p.code = $("editCode").value.trim();
             p.buy = +$("editBuy").value || 0; p.sell = +$("editSell").value || 0;
             p.qty = +$("editQty").value || 0; p.min = +$("editMin").value || 0;
-            await _supabase.from('products').update({ name: p.name, code: p.code, buy_price: p.buy, sell_price: p.sell, stock: p.qty, min_stock: p.min }).eq('id', id);
+
+            await fetch(`/api/products/${id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(p)
+            });
+
             renderAll(); closeModal(); showMsg("سەرکەوتوو بوو", "زانیارییەکانی کاڵاکە نوێکرانەوە.");
         }
 
         async function importExcel(event) {
-            if (!_supabase) return;
             const file = event.target.files[0];
             if (!file) return;
             const reader = new FileReader();
@@ -658,8 +649,13 @@
                         let sell = Number(row[3]) || 0;
                         let qty = Number(row[4]) || 0;
                         if (name) {
-                            let { data: insData } = await _supabase.from('products').insert([{ name: name, code: code !== "undefined" ? code : "", buy_price: buy, sell_price: sell, stock: qty, min_stock: 2 }]).select();
-                            if(insData) { db.products.push({ id: insData[0].id, name, code, buy, sell, qty, min: 2 }); }
+                            let p = { id: uid(), name, code: code !== "undefined" ? code : "", buy, sell, qty, min: 2 };
+                            await fetch('/api/products', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify(p)
+                            });
+                            db.products.push(p);
                             addedCount++;
                         }
                     }
@@ -727,7 +723,6 @@
         }
 
         async function checkoutCart() {
-            if (!_supabase) return;
             let currentCartObj = carts.items[carts.activeCartId];
             if (currentCartObj.items.length === 0) { showMsg("تێبینی", "سەبەتە بەتاڵە!", true); return; }
             let type = $("saleType").value;
@@ -747,7 +742,11 @@
                 let p = product(item.product);
                 if (p) {
                     p.qty -= item.qty;
-                    await _supabase.from('products').update({ stock: p.qty }).eq('id', p.id);
+                    await fetch(`/api/products/${p.id}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(p)
+                    });
                 }
                 cartTotal += (item.price * item.qty);
                 itemsToSave.push({ product: item.product, name: item.name, qty: item.qty, price: item.price });
@@ -760,6 +759,7 @@
             }
 
             let saleData = {
+                id: uid(),
                 date: new Date().toISOString(),
                 items: itemsToSave,
                 total: cartTotal,
@@ -769,16 +769,23 @@
                 previousDebt: previousDebt
             };
 
-            let { data: sRes } = await _supabase.from('sales').insert([saleData]).select();
-            if(sRes) {
-                db.sales.push({ id: sRes[0].id, ...saleData });
-                printSale(sRes[0].id);
-            }
+            await fetch('/api/sales', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(saleData)
+            });
+
+            db.sales.push(saleData);
+            printSale(saleData.id);
 
             if (type === "credit") {
-                let debtData = { date: new Date().toISOString(), name: customerName, amount: cartTotal, note: `قەرزی فاتوورە - ${customerPhone}` };
-                let { data: dRes } = await _supabase.from('debts').insert([debtData]).select();
-                if(dRes) db.debts.push({ id: dRes[0].id, ...debtData });
+                let debtData = { id: uid(), date: new Date().toISOString(), name: customerName, amount: cartTotal, note: `قەرزی فاتوورە - ${customerPhone}` };
+                await fetch('/api/debts', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(debtData)
+                });
+                db.debts.push(debtData);
             }
 
             currentCartObj.items = []; currentCartObj.customer = ""; currentCartObj.phone = "";
@@ -816,7 +823,6 @@
         }
 
         async function checkoutReturnCart() {
-            if (!_supabase) return;
             if (currentReturnCart.length === 0) { showMsg("تێبینی", "سەبەتە بەتاڵە!", true); return; }
             let customerName = $("returnCustomer").value.trim();
             let reason = $("returnReason").value.trim();
@@ -827,15 +833,25 @@
                 let p = product(item.product);
                 if (p) {
                     p.qty += item.qty;
-                    await _supabase.from('products').update({ stock: p.qty }).eq('id', p.id);
+                    await fetch(`/api/products/${p.id}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(p)
+                    });
                 }
                 returnTotal += (item.price * item.qty);
                 itemsToSave.push({ product: item.product, name: item.name, qty: item.qty, price: item.price });
             }
 
-            let returnData = { date: new Date().toISOString(), items: itemsToSave, total: returnTotal, customer: customerName || "سەردانکەر", reason: reason || "نادیار" };
-            let { data: rRes } = await _supabase.from('returns').insert([returnData]).select();
-            if(rRes) { db.returns.push({ id: rRes[0].id, ...returnData }); printReturn(rRes[0].id); }
+            let returnData = { id: uid(), date: new Date().toISOString(), items: itemsToSave, total: returnTotal, customer: customerName || "سەردانکەر", reason: reason || "نادیار" };
+            await fetch('/api/returns', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(returnData)
+            });
+
+            db.returns.push(returnData);
+            printReturn(returnData.id);
             currentReturnCart = []; renderReturnCart();
             $("returnCustomer").value = ""; $("returnReason").value = ""; renderAll();
         }
@@ -927,58 +943,80 @@
         }
 
         async function addPurchase() {
-            if (!_supabase) return;
             let id = $("purchaseProduct").value, p = product(id), q = +$("purchaseQty").value, price = +$("purchasePrice").value;
             if (!p || q <= 0 || price < 0) { showMsg("تێبینی", "زانیاری تەواو بکە", true); return; }
             p.qty += q; p.buy = price;
-            await _supabase.from('products').update({ stock: p.qty, buy_price: price }).eq('id', p.id);
-            let purData = { product: id, qty: q, price, supplier: $("supplier").value.trim(), date: new Date().toISOString() };
-            let { data } = await _supabase.from('purchases').insert([purData]).select();
-            if(data) db.purchases.push({ id: data[0].id, ...purData });
+
+            await fetch(`/api/products/${p.id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(p)
+            });
+
+            let purData = { id: uid(), product: id, qty: q, price, supplier: $("supplier").value.trim(), date: new Date().toISOString() };
+            await fetch('/api/purchases', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(purData)
+            });
+
+            db.purchases.push(purData);
             renderAll(); showMsg("سەرکەوتوو بوو", "کڕین تۆمارکرا.");
         }
 
         async function addExpense() {
-            if (!_supabase) return;
             let name = $("expenseName").value.trim(), amount = +$("expenseAmount").value;
             if (!name || amount <= 0) { showMsg("تێبینی", "زانیاری تەواو بکە", true); return; }
-            let expData = { name, amount, date: new Date().toISOString() };
-            let { data } = await _supabase.from('expenses').insert([expData]).select();
-            if(data) db.expenses.push({ id: data[0].id, ...expData });
+            let expData = { id: uid(), name, amount, date: new Date().toISOString() };
+
+            await fetch('/api/expenses', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(expData)
+            });
+
+            db.expenses.push(expData);
             renderAll(); showMsg("سەرکەوتوو بوو", "خەرجی تۆمارکرا.");
         }
 
         async function addDebt() {
-            if (!_supabase) return;
             let name = $("debtName").value.trim(), amount = +$("debtAmount").value;
             if (!name || amount <= 0) { showMsg("تێبینی", "زانیاری تەواو بکە", true); return; }
-            let debtData = { name, amount, note: $("debtNote").value.trim(), date: new Date().toISOString() };
-            let { data } = await _supabase.from('debts').insert([debtData]).select();
-            if(data) db.debts.push({ id: data[0].id, ...debtData });
+            let debtData = { id: uid(), name, amount, note: $("debtNote").value.trim(), date: new Date().toISOString() };
+
+            await fetch('/api/debts', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(debtData)
+            });
+
+            db.debts.push(debtData);
             renderAll(); showMsg("سەرکەوتوو بوو", "قەرز تۆمارکرا.");
         }
 
         async function del(type, id) {
-            if (!_supabase) return;
             if (confirm("ئایا دڵنیایت لە سڕینەوە؟")) {
-                await _supabase.from(type).delete().eq('id', id);
+                await fetch(`/api/${type}/${id}`, { method: 'DELETE' });
                 db[type] = db[type].filter(x => x.id != id);
                 renderAll();
             }
         }
 
         async function addPayment(id) {
-            if (!_supabase) return;
             let d = db.debts.find(x => x.id == id);
             let n = +prompt(`قەرز: ${money(d.amount)}\nپارەی دراو چەندە؟`, d.amount);
             if (n > 0) {
                 let paid = Math.min(n, d.amount);
                 d.amount = Math.max(0, d.amount - paid);
                 if (d.amount === 0) {
-                    await _supabase.from('debts').delete().eq('id', id);
+                    await fetch(`/api/debts/${id}`, { method: 'DELETE' });
                     db.debts = db.debts.filter(x => x.id != id);
                 } else {
-                    await _supabase.from('debts').update({ amount: d.amount }).eq('id', id);
+                    await fetch(`/api/debts/${id}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ amount: d.amount })
+                    });
                 }
                 renderAll(); showMsg("سەرکەوتوو بوو", "پارە وەرگیرا و قەرز کەمکرایەوە.");
             }
@@ -1023,7 +1061,7 @@
                     let p = ps[i];
                     let badge = p.qty <= p.min ? 'low' : '';
                     let c = p.code || "-";
-                    html += `<tr><td>${p.name}</td><td>${c}</td><td><span class="badge ${badge}">${p.qty}</span></td><td>${money(p.buy)}</td><td>${money(p.sell)}</td><td class="no-print"><button class="btn" style="color:var(--gold);" onclick="editProductModal('${p.id}')">✏️</button> <button class="btn" style="color:var(--danger);" onclick="del('products','${p.id}')">✕</button></td></tr>`;
+                    html += `<tr><td>${p.name}</td><td>${c}</td><td><span class="badge ${badge}">${p.qty}</span></td><td>${money(p.buy)}</td><td>${money(p.sell)}</td><td class="no-print"><button class="btn" style="color:var(--gold);" onclick="editProductModal('${p.id}')">✏️️</button> <button class="btn" style="color:var(--danger);" onclick="del('products','${p.id}')">✕</button></td></tr>`;
                 }
                 html += '</table></div>';
             }
@@ -1147,19 +1185,31 @@
         }
 
         function renderReports() {
-            let sTot = db.sales.reduce((s, x) => s + (x.total || 0), 0);
-            let pTot = db.purchases.reduce((s, x) => s + x.price * x.qty, 0);
-            let eTot = db.expenses.reduce((s, x) => s + x.amount, 0);
-            let rTot = (db.returns || []).reduce((s, x) => s + (x.total || 0), 0);
+            const filter = $("reportFilter") ? $("reportFilter").value : "all";
+            const now = new Date();
+            const sameDay = d => d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
+            const sameMonth = d => d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
+            const inPeriod = item => {
+                if(filter === "all") return true;
+                const d = new Date(item.date);
+                return filter === "today" ? sameDay(d) : sameMonth(d);
+            };
+            const sales = db.sales.filter(inPeriod);
+            const purchases = db.purchases.filter(inPeriod);
+            const expenses = db.expenses.filter(inPeriod);
+            const returns = (db.returns || []).filter(inPeriod);
+            const sTot = sales.reduce((s, x) => s + (x.total || 0), 0);
+            const pTot = purchases.reduce((s, x) => s + x.price * x.qty, 0);
+            const eTot = expenses.reduce((s, x) => s + x.amount, 0);
+            const rTot = returns.reduce((s, x) => s + (x.total || 0), 0);
             let gProf = 0;
-            db.sales.forEach(s => { (s.items || []).forEach(i => { let pr = product(i.product); gProf += (i.price - (pr ? pr.buy : 0)) * i.qty; }); });
-            let finalSales = sTot - rTot;
-            let finalGross = gProf;
-            let finalNet = finalGross - eTot;
+            sales.forEach(s => { (s.items || []).forEach(i => { let pr = product(i.product); gProf += (i.price - (pr ? pr.buy : 0)) * i.qty; }); });
+            const finalSales = sTot - rTot;
+            const finalNet = gProf - eTot;
             if($("rPurchases")) $("rPurchases").textContent = money(pTot);
             if($("rSales")) $("rSales").textContent = money(finalSales);
             if($("rReturns")) $("rReturns").textContent = money(rTot);
-            if($("rGross")) $("rGross").textContent = money(finalGross);
+            if($("rGross")) $("rGross").textContent = money(gProf);
             if($("rNet")) $("rNet").textContent = money(finalNet);
         }
 
