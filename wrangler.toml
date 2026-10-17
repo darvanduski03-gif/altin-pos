@@ -1,0 +1,8 @@
+name = "altin-system"
+compatibility_date = "2024-03-20"
+pages_build_output_dir = "./deploy"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "workerjs"
+database_id = "cb392c4c-ec8a-43c6-99dc-ecc1399ee981"
