@@ -8,7 +8,7 @@ const ALTIN_PERMS = {
   cashier: ['dashboard.view','sales.view','sales.create','customers.view','customers.create','debts.create','debts.view','returns.view','returns.create'],
   seller: ['sales.view','sales.create','debts.view','debts.create','returns.view','returns.create'],
   warehouse: ['dashboard.view','purchases.view','purchases.create','purchases.edit','stock.view','stock.create','stock.edit'],
-  accountant: ['dashboard.view','sales.view','purchases.view','returns.view','expenses.view','expenses.create','expenses.edit','customers.view','customers.create','customers.edit','debts.view','debts.create','reports.view','audit.view']
+  accountant: ['dashboard.view','sales.view','purchases.view','returns.view','expenses.view','expenses.create','expenses.edit','customers.view','customers.create','customers.edit','debts.view','debts.create','debts.edit','reports.view','audit.view']
 };
 const ALTIN_ROLE_LABELS = {admin:'Admin — بەڕێوەبەری گشتی',manager:'Manager — بەڕێوەبەر',cashier:'Cashier — فرۆشیار',seller:'Seller — فرۆشیار (فرۆشتن و مرجوعات)',warehouse:'Warehouse — کۆگا',accountant:'Accountant — ژمێریار'};
 // Per-isolate performance state; contains no user data or credentials.
@@ -134,7 +134,16 @@ async function altinTableColumns(db, table){
 }
 async function altinEnsureColumn(db, table, column, definition){
   const cols = await altinTableColumns(db, table);
-  if(!cols.has(column)) await db.prepare(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`).run();
+  if(cols.has(column)) return;
+  try {
+    await db.prepare(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`).run();
+  } catch (err) {
+    // Multiple Cloudflare isolates can initialize the same D1 database at once.
+    // If another request added the column between PRAGMA and ALTER, treat that
+    // specific race as success; otherwise preserve the real error.
+    const refreshed = await altinTableColumns(db, table);
+    if(!refreshed.has(column)) throw err;
+  }
 }
 async function altinEnsureAuthSchema(db, initialAdminPassword = ''){
   await db.prepare(`CREATE TABLE IF NOT EXISTS altin_users (id TEXT PRIMARY KEY,username TEXT UNIQUE NOT NULL,name TEXT DEFAULT '',role TEXT DEFAULT 'cashier',password TEXT DEFAULT '',permissions TEXT DEFAULT '[]',active INTEGER DEFAULT 1,date TEXT NOT NULL)`).run();
@@ -240,7 +249,7 @@ export default {
           const legacyColumns = [
             ['products','name',"TEXT DEFAULT ''"], ['products','code',"TEXT DEFAULT ''"], ['products','buy','REAL DEFAULT 0'], ['products','sell','REAL DEFAULT 0'], ['products','qty','REAL DEFAULT 0'], ['products','min','REAL DEFAULT 0'],
             ['sales','date',"TEXT DEFAULT ''"], ['sales','items',"TEXT DEFAULT '[]'"], ['sales','total','REAL DEFAULT 0'], ['sales','customer',"TEXT DEFAULT ''"], ['sales','customerPhone',"TEXT DEFAULT ''"], ['sales','paymentType',"TEXT DEFAULT 'cash'"], ['sales','previousDebt','REAL DEFAULT 0'], ['sales','reason',"TEXT DEFAULT ''"], ['sales','subtotal','REAL DEFAULT 0'], ['sales','discount','REAL DEFAULT 0'], ['sales','paidAmount','REAL DEFAULT 0'], ['sales','debtAmount','REAL DEFAULT 0'],
-            ['purchases','product',"TEXT DEFAULT ''"], ['purchases','qty','REAL DEFAULT 0'], ['purchases','price','REAL DEFAULT 0'], ['purchases','supplier',"TEXT DEFAULT ''"], ['purchases','date',"TEXT DEFAULT ''"], ['purchases','paymentType',"TEXT DEFAULT 'cash'"], ['purchases','paidAmount','REAL DEFAULT 0'], ['purchases','debtAmount','REAL DEFAULT 0'], ['purchases','total','REAL DEFAULT 0'], ['purchases','currency',"TEXT DEFAULT 'IQD'"], ['purchases','buyIQD','REAL DEFAULT 0'],
+            ['purchases','product',"TEXT DEFAULT ''"], ['purchases','qty','REAL DEFAULT 0'], ['purchases','price','REAL DEFAULT 0'], ['purchases','supplier',"TEXT DEFAULT ''"], ['purchases','date',"TEXT DEFAULT ''"], ['purchases','paymentType',"TEXT DEFAULT 'cash'"], ['purchases','paidAmount','REAL DEFAULT 0'], ['purchases','debtAmount','REAL DEFAULT 0'], ['purchases','total','REAL DEFAULT 0'], ['purchases','currency',"TEXT DEFAULT 'IQD'"], ['purchases','buyIQD','REAL DEFAULT 0'], ['purchases','batchId',"TEXT DEFAULT ''"],
             ['expenses','name',"TEXT DEFAULT ''"], ['expenses','amount','REAL DEFAULT 0'], ['expenses','date',"TEXT DEFAULT ''"],
             ['debts','name',"TEXT DEFAULT ''"], ['debts','amount','REAL DEFAULT 0'], ['debts','note',"TEXT DEFAULT ''"], ['debts','date',"TEXT DEFAULT ''"], ['debts','currency',"TEXT DEFAULT 'IQD'"],
             ['returns','date',"TEXT DEFAULT ''"], ['returns','items',"TEXT DEFAULT '[]'"], ['returns','total','REAL DEFAULT 0'], ['returns','customer',"TEXT DEFAULT ''"], ['returns','reason',"TEXT DEFAULT ''"],
@@ -254,11 +263,16 @@ export default {
             legacyByTable.get(table).push([column, definition]);
           }
           for (const [table, columns] of legacyByTable) {
-            const have = await altinTableColumns(env.DB, table);
+            let have = await altinTableColumns(env.DB, table);
             for (const [column, definition] of columns) {
-              if (!have.has(column)) {
+              if (have.has(column)) continue;
+              try {
                 await env.DB.prepare(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`).run();
                 have.add(column);
+              } catch (err) {
+                // A parallel cold start may have completed this migration.
+                have = await altinTableColumns(env.DB, table);
+                if (!have.has(column)) throw err;
               }
             }
           }
@@ -400,7 +414,7 @@ export default {
           ).all(),
 
           env.DB.prepare(
-            "SELECT * FROM sales ORDER BY date DESC"
+            "SELECT * FROM sales ORDER BY date DESC, rowid DESC"
           ).all(),
 
           env.DB.prepare(
@@ -552,6 +566,13 @@ export default {
         }
       }
 
+      if (path === "/api/transactions/purchase/edit" && (request.method === "PUT" || request.method === "POST")) {
+        const a=await altinRequire(env.DB,request,"purchases.edit"); if(a.error) return altinAuthResponse(json,a);
+        let data={}; try { data=await request.json(); } catch { return json({success:false,error:"داتای دەستکاری کڕین دروست نییە."},400); }
+        data.actor=a.user.username;
+        return editPurchaseTransaction(data,env.DB,json);
+      }
+
       /* ================= TRANSACTIONS ================= */
 
       if (path === "/api/transactions/sale/edit" && (request.method === "PUT" || request.method === "POST")) {
@@ -569,6 +590,16 @@ export default {
 
         const data = await request.json(); data.actor = a.user.username;
         return saleTransaction(data, env.DB, json);
+      }
+
+      if (
+        path === "/api/transactions/purchase/batch" &&
+        request.method === "POST"
+      ) {
+        const a=await altinRequire(env.DB,request,"purchases.create"); if(a.error) return altinAuthResponse(json, a);
+        let data={}; try { data=await request.json(); } catch { return json({success:false,error:"داتای سەبەتەی کڕین دروست نییە."},400); }
+        data.actor = a.user.username;
+        return purchaseBatchTransaction(data, env.DB, json);
       }
 
       if (
@@ -680,31 +711,37 @@ export default {
 
       if (path === "/api/mega/settings" && request.method === "PUT") {
         const a=await altinRequire(env.DB,request,"settings.edit"); if(a.error) return altinAuthResponse(json,a);
-        const d=await request.json();
-        if (d.currency!==undefined) await megaSet(env.DB,"currency",d.currency==="USD"?"USD":"IQD");
-        if (d.usdRate!==undefined) await megaSet(env.DB,"usdRate",Math.max(1,Number(d.usdRate)||1310));
-        if (d.returnDays!==undefined) await megaSet(env.DB,"returnDays",Math.max(0,Number(d.returnDays)||3));
+        const d=await request.json().catch(()=>null);
+        if (!d || typeof d !== "object" || Array.isArray(d)) return json({success:false,error:"داتای ڕێکخستن دروست نییە."},400);
+        const updates=[];
+        if (d.currency!==undefined) updates.push(["currency",d.currency==="USD"?"USD":"IQD"]);
+        if (d.usdRate!==undefined) {
+          const usdRate=Number(d.usdRate);
+          if (!Number.isFinite(usdRate) || usdRate < 1 || usdRate > 1000000000) return json({success:false,error:"نرخی گۆڕینی دۆلار دەبێت لە ١ تا ١,٠٠٠,٠٠٠,٠٠٠ بێت."},400);
+          updates.push(["usdRate",usdRate]);
+        }
+        if (d.returnDays!==undefined) {
+          const returnDays=Number(d.returnDays);
+          if (!Number.isInteger(returnDays) || returnDays < 0 || returnDays > 3650) return json({success:false,error:"ماوەی مرجوعات دەبێت ژمارەیەکی تەواو لە ٠ تا ٣٦٥٠ ڕۆژ بێت."},400);
+          updates.push(["returnDays",returnDays]);
+        }
         if (d.openingCash!==undefined) {
           const openingCash=Number(d.openingCash);
-          if (!Number.isFinite(openingCash) || openingCash < 0 || openingCash > 1e15) {
-            return json({success:false,error:"بڕی پارەی سەرەتایی سندوق دروست نییە."},400);
-          }
-          await megaSet(env.DB,"openingCash",openingCash);
+          if (!Number.isFinite(openingCash) || openingCash < 0 || openingCash > 1e15) return json({success:false,error:"بڕی پارەی سەرەتایی سندوق دروست نییە."},400);
+          updates.push(["openingCash",openingCash]);
         }
         if (d.dailySalesTarget!==undefined) {
           const dailySalesTarget=Number(d.dailySalesTarget);
-          if (!Number.isFinite(dailySalesTarget) || dailySalesTarget < 1 || dailySalesTarget > 1e12) {
-            return json({success:false,error:"ئامانجی فرۆشتنی ڕۆژانە دروست نییە."},400);
-          }
-          await megaSet(env.DB,"dailySalesTarget",dailySalesTarget);
+          if (!Number.isFinite(dailySalesTarget) || dailySalesTarget < 1 || dailySalesTarget > 1e12) return json({success:false,error:"ئامانجی فرۆشتنی ڕۆژانە دروست نییە."},400);
+          updates.push(["dailySalesTarget",dailySalesTarget]);
         }
         if (d.targetGrossMargin!==undefined) {
           const targetGrossMargin=Number(d.targetGrossMargin);
-          if (!Number.isFinite(targetGrossMargin) || targetGrossMargin < 1 || targetGrossMargin > 95) {
-            return json({success:false,error:"ئامانجی قازانجی خام دەبێت لە ١ تا ٩٥ بێت."},400);
-          }
-          await megaSet(env.DB,"targetGrossMargin",targetGrossMargin);
+          if (!Number.isFinite(targetGrossMargin) || targetGrossMargin < 1 || targetGrossMargin > 95) return json({success:false,error:"ئامانجی قازانجی خام دەبێت لە ١ تا ٩٥ بێت."},400);
+          updates.push(["targetGrossMargin",targetGrossMargin]);
         }
+        // Validate every submitted value before persisting any of them.
+        for (const [key,value] of updates) await megaSet(env.DB,key,value);
         return json({success:true});
       }
 
@@ -775,6 +812,110 @@ export default {
         return json({success:true,debtId,previousAmount:current,amount:Math.max(0,next),currency});
       }
 
+      /* ================= SUPPLIER-WIDE PURCHASE DEBT PAYMENT ================= */
+      if (path === "/api/purchase-debts/pay-supplier" && request.method === "POST") {
+        const auth = await altinRequire(env.DB, request, "purchases.view");
+        if (auth.error) return altinAuthResponse(json, auth);
+        let data = {};
+        try { data = await request.json(); } catch { return json({success:false,error:"داتای پارەدانی گشتی دروست نییە."},400); }
+        const supplier = String(data.supplier || "").trim();
+        const supplierKey = supplier.trim().replace(/\s+/g, " ").toLocaleLowerCase();
+        const currency = data.currency === "USD" ? "USD" : "IQD";
+        const amount = Number(data.amount);
+        const paymentMethod = String(data.paymentMethod || "نەقد").trim().slice(0,80);
+        const paymentDate = String(data.date || new Date().toISOString());
+        if (!supplier || supplier.length > 120 || !Number.isFinite(amount) || amount <= 0 || amount > 1e12 || !paymentMethod) {
+          return json({success:false,error:"ناوی فرۆشیار، بڕی پارە، یان شێوازی پارەدان دروست نییە."},400);
+        }
+        if (!Number.isFinite(Date.parse(paymentDate))) return json({success:false,error:"بەرواری پارەدان دروست نییە."},400);
+
+        const debtRows = await env.DB.prepare("SELECT id,name,amount,note,date,currency FROM debts WHERE amount > 0 ORDER BY date ASC, rowid ASC").all();
+        const eligible = (debtRows.results || []).filter(d => {
+          const isPurchaseDebt = String(d.id || "").startsWith("purchase-") || String(d.note || "").includes("قەرزی کڕین");
+          const nameKey = String(d.name || "").trim().replace(/\s+/g, " ").toLocaleLowerCase();
+          const rowCurrency = String(d.currency || "IQD").toUpperCase() === "USD" ? "USD" : "IQD";
+          return isPurchaseDebt && nameKey === supplierKey && rowCurrency === currency && Number(d.amount || 0) > 0;
+        });
+        const totalRemaining = eligible.reduce((sum,d) => sum + Math.max(0,Number(d.amount || 0)),0);
+        if (!eligible.length || totalRemaining <= 0) return json({success:false,error:"بۆ ئەم فرۆشیارە لەم دراوەدا قەرزی ماوە نەدۆزرایەوە."},404);
+        if (amount > totalRemaining + 1e-8) return json({success:false,error:"بڕی پارەدان لە کۆی قەرزی ماوە زیاترە.",remaining:totalRemaining,currency},400);
+
+        let left = amount;
+        let allocations = 0;
+        const statements = [];
+        for (const d of eligible) {
+          if (left <= 1e-8) break;
+          const current = Math.max(0,Number(d.amount || 0));
+          if (current <= 0) continue;
+          const paid = Math.min(current,left);
+          const next = Math.max(0,current-paid);
+          const paymentId = crypto.randomUUID();
+          const paymentNote = (`قەرزی کڕین • پارەدانی گشتی بۆ فرۆشیار: ${supplier} • ${String(data.note || "پارەدانی قەرزی کڕین").slice(0,220)}`).slice(0,500);
+          statements.push(env.DB.prepare(`INSERT INTO payments(id,debtId,customer,amount,currency,note,date,paymentMethod) VALUES(?,?,?,?,?,?,?,?)`).bind(
+            paymentId,d.id,String(d.name || supplier),paid,currency,paymentNote,paymentDate,paymentMethod
+          ));
+          if (next <= 1e-8) statements.push(env.DB.prepare("DELETE FROM debts WHERE id=? AND amount=?").bind(d.id,current));
+          else statements.push(env.DB.prepare("UPDATE debts SET amount=? WHERE id=? AND amount=?").bind(next,d.id,current));
+          altinAppendChangeGuard(statements,env.DB);
+          statements.push(env.DB.prepare("INSERT INTO audit_logs(id,date,action,entity,entityId,details,actor) VALUES(?,?,?,?,?,?,?)").bind(
+            crypto.randomUUID(),new Date().toISOString(),"PAYMENT","debt",d.id,
+            JSON.stringify({paid,remaining:next,customer:d.name||supplier,supplier,currency,paymentMethod,aggregatePayment:true,requestedAmount:amount}),
+            auth.user.username
+          ));
+          left = Math.max(0,left-paid);
+          allocations += 1;
+        }
+        const conflict = await altinBatchOrConflict(env.DB,statements,json);
+        if (conflict) return conflict;
+        return json({success:true,supplier,currency,paid:amount,remaining:Math.max(0,totalRemaining-amount),allocations,paymentMethod});
+      }
+
+      /* ================= CUSTOMER DEBT ADJUSTMENT ================= */
+      if (path === "/api/customer-debts/adjust" && request.method === "POST") {
+        const auth = await altinRequire(env.DB, request, "debts.edit");
+        if (auth.error) return altinAuthResponse(json, auth);
+        let data = {};
+        try { data = await request.json(); } catch { return json({success:false,error:"داتای دەستکاری قەرز دروست نییە."},400); }
+        const debtId = String(data.id || "").trim();
+        const operation = ["increase","decrease","set"].includes(data.operation) ? data.operation : "";
+        const amount = Number(data.amount);
+        if (!debtId || !operation || !Number.isFinite(amount) || amount < 0 || amount > 1000000000000 || (operation !== "set" && amount <= 0)) {
+          return json({success:false,error:"بڕی قەرز یان جۆری گۆڕانکاری دروست نییە."},400);
+        }
+        const old = await env.DB.prepare("SELECT * FROM debts WHERE id=?").bind(debtId).first();
+        if (!old) return json({success:false,error:"قەرزەکە نەدۆزرایەوە."},404);
+        if (String(old.id || "").startsWith("purchase-") || String(old.note || "").includes("قەرزی کڕین")) {
+          return json({success:false,error:"قەرزی فرۆشیار لەم endpoint ـە دەستکاری ناکرێت؛ بەشی قەرزی کڕین بەکاربهێنە."},400);
+        }
+        const current = Math.max(0, Number(old.amount || 0));
+        if (operation === "decrease" && amount > current) return json({success:false,error:"بڕی کەمکردن لە قەرزی ماوە زیاترە."},400);
+        const next = operation === "increase" ? current + amount : operation === "decrease" ? current - amount : amount;
+        if (!Number.isFinite(next) || next < 0) return json({success:false,error:"قەرزی نوێ دروست نییە."},400);
+        const name = operation === "set" && data.name !== undefined ? String(data.name || "").trim().slice(0,120) : String(old.name || "").trim();
+        if (!name) return json({success:false,error:"ناوی کڕیار پێویستە."},400);
+        let note = operation === "set" && data.note !== undefined ? String(data.note || "").slice(0,450) : String(old.note || "");
+        // Preserve invoice linkage tags so invoice balances keep tracking this debt.
+        const invoiceMarkers = [...String(old.note || "").matchAll(/\[فاکتۆر:[^\]]+\]/g)].map(m => m[0]);
+        for (const marker of invoiceMarkers) if (!note.includes(marker)) note = (note ? note + " " : "") + marker;
+        const date = operation === "set" && data.date ? String(data.date).slice(0,40) : String(old.date || new Date().toISOString());
+        const currency = old.currency === "USD" ? "USD" : "IQD";
+        const now = new Date().toISOString();
+        const statements = [
+          env.DB.prepare("UPDATE debts SET name=?,amount=?,note=?,date=? WHERE id=?").bind(name, Math.max(0,next), note, date, debtId)
+        ];
+        // If this debt belongs to an invoice, keep the invoice customer name aligned with the ledger.
+        for (const marker of invoiceMarkers) {
+          const saleId = marker.slice("[فاکتۆر:".length, -1).trim();
+          if (saleId) statements.push(env.DB.prepare("UPDATE sales SET customer=? WHERE id=?").bind(name, saleId));
+        }
+        statements.push(env.DB.prepare("INSERT INTO audit_logs (id,date,action,entity,entityId,details,actor) VALUES (?,?,?,?,?,?,?)").bind(
+          crypto.randomUUID(), now, operation === "set" ? "EDIT_CUSTOMER_DEBT" : "ADJUST_CUSTOMER_DEBT", "debt", debtId,
+          JSON.stringify({operation,adjustment:amount,previousAmount:current,newAmount:Math.max(0,next),name,currency,note}), auth.user.username
+        ));
+        await env.DB.batch(statements);
+        return json({success:true,id:debtId,operation,previousAmount:current,amount:Math.max(0,next),currency});
+      }
+
       /* ================= BULK PRODUCT PROFIT MARGIN ================= */
       if (path === "/api/products/bulk-price" && request.method === "POST") {
         const auth = await altinRequire(env.DB, request, "stock.edit");
@@ -807,6 +948,50 @@ export default {
         ));
         await env.DB.batch(statements);
         return json({success:true,updated:changes.length,mode:"profit-on-buy-price",percent,products:changes.map(p=>({id:p.id,buy:p.buy,sell:p.sell,profitPercent:p.profitPercent}))});
+      }
+
+      /* ================= SAFE BARCODE-ONLY UPDATE ================= */
+      const barcodeMatch = path.match(/^\/api\/products\/([^/]+)\/barcode$/);
+      if (barcodeMatch && request.method === "PUT") {
+        const auth = await altinRequire(env.DB, request, "stock.edit");
+        if (auth.error) return altinAuthResponse(json, auth);
+        let data = {};
+        try { data = await request.json(); } catch { return json({success:false,error:"داتای بارکۆد دروست نییە."},400); }
+        const code = String(data.code || "").trim();
+        if (!code || code.length > 120) return json({success:false,error:"کۆدی بارکۆد دەبێت ١٢٠ پیت یان کەمتر بێت و بەتاڵ نەبێت."},400);
+        let productId;
+        try { productId = decodeURIComponent(barcodeMatch[1]); } catch { return json({success:false,error:"ناسنامەی کاڵا دروست نییە."},400); }
+        const product = await env.DB.prepare("SELECT id FROM products WHERE id=?").bind(productId).first();
+        if (!product) return json({success:false,error:"کاڵاکە نەدۆزرایەوە."},404);
+        const duplicate = await env.DB.prepare("SELECT id FROM products WHERE LOWER(TRIM(code))=LOWER(TRIM(?)) AND id<>? LIMIT 1").bind(code,productId).first();
+        if (duplicate) return json({success:false,error:"ئەم کۆدی بارکۆدە پێشتر بۆ کاڵایەکی تر بەکارهاتووە."},409);
+        await env.DB.batch([
+          env.DB.prepare("UPDATE products SET code=? WHERE id=?").bind(code,productId),
+          env.DB.prepare("INSERT INTO audit_logs(id,date,action,entity,entityId,details,actor) VALUES(?,?,?,?,?,?,?)")
+            .bind(crypto.randomUUID(),new Date().toISOString(),"BARCODE_CHANGE","product",productId,JSON.stringify({code}),auth.user.username)
+        ]);
+        return json({success:true,id:productId,code});
+      }
+
+      /* ================= SAFE SELL-PRICE UPDATE ================= */
+      const sellPriceMatch = path.match(/^\/api\/products\/([^/]+)\/sell-price$/);
+      if (sellPriceMatch && request.method === "PUT") {
+        const auth = await altinRequire(env.DB, request, "sales.create");
+        if (auth.error) return altinAuthResponse(json, auth);
+        let data = {};
+        try { data = await request.json(); } catch { return json({success:false,error:"نرخی نوێ دروست نییە."},400); }
+        const sell = Number(data.sell);
+        if (!Number.isFinite(sell) || sell < 0 || sell > 1000000000000) return json({success:false,error:"نرخی فرۆشتن دروست نییە."},400);
+        let productId;
+        try { productId = decodeURIComponent(sellPriceMatch[1]); } catch { return json({success:false,error:"ناسنامەی کاڵا دروست نییە."},400); }
+        const product = await env.DB.prepare("SELECT id FROM products WHERE id=?").bind(productId).first();
+        if (!product) return json({success:false,error:"کاڵاکە نەدۆزرایەوە."},404);
+        await env.DB.batch([
+          env.DB.prepare("UPDATE products SET sell=? WHERE id=?").bind(sell, productId),
+          env.DB.prepare("INSERT INTO audit_logs(id,date,action,entity,entityId,details,actor) VALUES(?,?,?,?,?,?,?)")
+            .bind(crypto.randomUUID(),new Date().toISOString(),"SELL_PRICE_CHANGE","product",productId,JSON.stringify({sell}),auth.user.username)
+        ]);
+        return json({success:true,id:productId,sell});
       }
 
       /* ================= STANDARD API ================= */
@@ -844,6 +1029,11 @@ export default {
         }
 
         if (table === "products") {
+          const productCode = String(data.code || "").trim();
+          if (productCode) {
+            const duplicate = await env.DB.prepare("SELECT id FROM products WHERE LOWER(TRIM(code))=LOWER(TRIM(?)) LIMIT 1").bind(productCode).first();
+            if (duplicate) return json({success:false,error:"ئەم کۆدە پێشتر بۆ کاڵایەکی تر بەکارهاتووە."},409);
+          }
           await env.DB
             .prepare(
               `INSERT INTO products
@@ -853,7 +1043,7 @@ export default {
             .bind(
               data.id,
               String(data.name || "").trim(),
-              String(data.code || ""),
+              productCode,
               num(data.buy),
               num(data.sell),
               num(data.qty),
@@ -961,162 +1151,49 @@ export default {
 
         const data = await request.json();
 
-        /* -------- PRODUCT -------- */
-
+        /* -------- PRODUCT (optimistic stock edit) -------- */
         if (table === "products") {
-          await env.DB
-            .prepare(
-              `UPDATE products
-               SET name=?,
-                   code=?,
-                   buy=?,
-                   sell=?,
-                   qty=?,
-                   min=?
-               WHERE id=?`
-            )
-            .bind(
-              data.name || "",
-              data.code || "",
-              num(data.buy),
-              num(data.sell),
-              num(data.qty),
-              num(data.min),
-              id
-            )
-            .run();
-
-          return json({
-            success: true,
-            id
-          });
+          if (data.expectedQty === undefined || !Number.isFinite(Number(data.expectedQty))) {
+            return json({success:false,error:"داتا کۆگا کۆنە یان پشکنینی ژمارەی پێشوو نییە. داتا نوێ بکەرەوە و دووبارە هەوڵ بدەرەوە."},400);
+          }
+          const expectedQty = Number(data.expectedQty);
+          const nextQty = num(data.qty, expectedQty);
+          const productCode = String(data.code || "").trim();
+          if (expectedQty < 0 || nextQty < 0 || nextQty > 1e12) return json({success:false,error:"ژمارەی کۆگا دروست نییە."},400);
+          if (productCode) {
+            const duplicate = await env.DB.prepare("SELECT id FROM products WHERE LOWER(TRIM(code))=LOWER(TRIM(?)) AND id<>? LIMIT 1").bind(productCode,id).first();
+            if (duplicate) return json({success:false,error:"ئەم کۆدە پێشتر بۆ کاڵایەکی تر بەکارهاتووە."},409);
+          }
+          const now = new Date().toISOString();
+          const statements = [env.DB.prepare(
+            `UPDATE products SET name=?,code=?,buy=?,sell=?,qty=?,min=? WHERE id=? AND qty=?`
+          ).bind(String(data.name || "").trim(),productCode,num(data.buy),num(data.sell),nextQty,num(data.min),id,expectedQty)];
+          altinAppendChangeGuard(statements,env.DB);
+          if (Math.abs(nextQty-expectedQty)>1e-8) {
+            statements.push(env.DB.prepare("INSERT INTO stock_movements(id,date,productId,type,qty,beforeQty,afterQty,refId,note) VALUES(?,?,?,?,?,?,?,?,?)")
+              .bind(crypto.randomUUID(),now,id,"manual-adjustment",nextQty-expectedQty,expectedQty,nextQty,id,"دەستکاریی دەستیی کۆگا"));
+          }
+          statements.push(env.DB.prepare("INSERT INTO audit_logs(id,date,action,entity,entityId,details,actor) VALUES(?,?,?,?,?,?,?)")
+            .bind(crypto.randomUUID(),now,"EDIT_PRODUCT","product",id,JSON.stringify({name:String(data.name||"").trim(),code:String(data.code||""),buy:num(data.buy),sell:num(data.sell),beforeQty:expectedQty,afterQty:nextQty,min:num(data.min)}),actor));
+          const conflict = await altinBatchOrConflict(env.DB,statements,json);
+          if (conflict) return conflict;
+          return json({success:true,id});
         }
 
         /* -------- SALE -------- */
 
         if (table === "sales") {
-          const items = Array.isArray(data.items)
-            ? data.items
-            : [];
-
-          /*
-           * IMPORTANT:
-           * نرخی فرۆشتن لە فاکتۆر
-           * دەبێتە نرخی نوێی products.sell
-           */
-
-          for (const item of items) {
-            if (
-              item.manual ||
-              !item.product
-            ) {
-              continue;
-            }
-
-            const price = Number(item.price);
-
-            if (
-              !Number.isFinite(price) ||
-              price < 0
-            ) {
-              continue;
-            }
-
-            await env.DB
-              .prepare(
-                `UPDATE products
-                 SET sell=?
-                 WHERE id=?`
-              )
-              .bind(
-                price,
-                item.product
-              )
-              .run();
-          }
-
-          await env.DB
-            .prepare(
-              `UPDATE sales
-               SET date=?,
-                   items=?,
-                   total=?,
-                   customer=?,
-                   customerPhone=?,
-                   paymentType=?,
-                   previousDebt=?,
-                   reason=?,
-                   subtotal=?,
-                   discount=?,
-                   paidAmount=?,
-                   debtAmount=?
-               WHERE id=?`
-            )
-            .bind(
-              data.date ||
-                new Date().toISOString(),
-
-              JSON.stringify(items),
-
-              num(data.total),
-
-              data.customer || "",
-
-              data.customerPhone || "",
-
-              data.paymentType || "cash",
-
-              num(data.previousDebt),
-
-              data.reason || "",
-
-              num(data.subtotal),
-
-              num(data.discount),
-
-              num(data.paidAmount),
-
-              num(data.debtAmount),
-
-              id
-            )
-            .run();
-
-          return json({
-            success: true,
-            id,
-            priceSync: true
-          });
+          data.id = id;
+          data.actor = actor;
+          return editSaleTransaction(data, env.DB, json);
         }
 
         /* -------- PURCHASE -------- */
 
         if (table === "purchases") {
-          await env.DB
-            .prepare(
-              `UPDATE purchases
-               SET product=?,
-                   qty=?,
-                   price=?,
-                   supplier=?,
-                   date=?
-               WHERE id=?`
-            )
-            .bind(
-              data.product,
-              num(data.qty),
-              num(data.price),
-              data.supplier || "",
-              data.date ||
-                new Date().toISOString(),
-              id
-            )
-            .run();
-
-          return json({
-            success: true,
-            id
-          });
+          data.id = id;
+          data.actor = actor;
+          return editPurchaseTransaction(data, env.DB, json);
         }
 
         /* -------- EXPENSE -------- */
@@ -1188,9 +1265,11 @@ export default {
         if (table === "products" && id === "all") {
           // This destructive action is intentionally admin-only.
           if (authz.user.role !== 'admin') return json({success:false,error:'تەنها بەڕێوەبەری گشتی دەتوانێت هەموو کاڵاکان بسڕێتەوە.'},403);
-          await env.DB.prepare("DELETE FROM products").run();
-          await env.DB.prepare("INSERT INTO audit_logs(id,date,action,entity,entityId,details,actor) VALUES(?,?,?,?,?,?,?)")
-            .bind(crypto.randomUUID(),new Date().toISOString(),'DELETE_ALL','products','all','{}',actor).run();
+          await env.DB.batch([
+            env.DB.prepare("DELETE FROM products"),
+            env.DB.prepare("INSERT INTO audit_logs(id,date,action,entity,entityId,details,actor) VALUES(?,?,?,?,?,?,?)")
+              .bind(crypto.randomUUID(),new Date().toISOString(),'DELETE_ALL','products','all','{}',actor)
+          ]);
           return json({success:true});
         }
         return await altinDeleteRecord(table,id,env.DB,actor,json);
@@ -1778,6 +1857,17 @@ async function editSaleTransaction(s, db, json) {
   let oldItems=[];
   try { oldItems = typeof oldSale.items === 'string' ? JSON.parse(oldSale.items || '[]') : (oldSale.items || []); } catch { oldItems=[]; }
   if (!Array.isArray(oldItems)) oldItems=[];
+  // Editing an invoice after a linked return would need to re-price/reallocate that
+  // return as well. Until the UI supports a joint edit, reject it rather than
+  // silently reopening debt or rewriting stock/accounting history.
+  const returnRowsForSaleEdit = await db.prepare('SELECT id,items FROM returns').all();
+  for (const returnRow of (returnRowsForSaleEdit.results || [])) {
+    let returnItems=[];
+    try { returnItems = typeof returnRow.items === 'string' ? JSON.parse(returnRow.items || '[]') : (returnRow.items || []); } catch { returnItems=[]; }
+    if (Array.isArray(returnItems) && returnItems.some(item => String(item?.sourceSaleId || '') === saleId)) {
+      return json({success:false,error:'ئەم فاکتۆرە مرجوعاتی بەستراوی هەیە؛ پێش دەستکاری فاکتۆرەکە سەرەتا مرجوعاتەکە چارەسەر بکە.'},409);
+    }
+  }
   const oldProductIds = new Set(oldItems.filter(x => x && !x.manual && x.product).map(x => String(x.product)));
   const submittedProductIds = [...new Set(s.items.filter(x => x && !x.manual && x.product).map(x => String(x.product)))];
   const existingProductIds = new Set();
@@ -1847,10 +1937,10 @@ async function editSaleTransaction(s, db, json) {
 
   const linkedResult = await db.prepare('SELECT * FROM debts WHERE note LIKE ?').bind(`%[فاکتۆر:${saleId}]%`).all();
   const linkedDebts = linkedResult.results || [];
-  for (const d of linkedDebts) {
-    const pay = await db.prepare('SELECT COUNT(*) AS n FROM payments WHERE debtId=?').bind(d.id).first();
-    if (Number(pay?.n || 0) > 0) return json({success:false,error:'ئەم فاکتۆرە پارەدانی تۆمارکراوی هەیە؛ بۆ پاراستنی مێژووی پارەدان ناتوانرێت دەستکاری بکرێت.'},409);
-  }
+  const invoicePayments = await db.prepare('SELECT debtId,COALESCE(SUM(amount),0) AS paid FROM payments WHERE note LIKE ? GROUP BY debtId').bind(`%[فاکتۆر:${saleId}]%`).all();
+  const historicalPaid = (invoicePayments.results || []).reduce((sum,p)=>sum+Math.max(0,Number(p.paid||0)),0);
+  if(historicalPaid > debtAmount + 1e-8) return json({success:false,error:'قەرزی نوێ لە پارەی پێشتر وەرگیراو کەمترە؛ بۆ پاراستنی حساب، سەرەتا پارەدان/گەڕاندنەوەکە چارەسەر بکە.'},409);
+  const openDebtAmount = Math.max(0, debtAmount - historicalPaid);
 
   const productIds = new Set([...oldQty.keys(),...newQty.keys()]);
   const statements=[];
@@ -1881,17 +1971,25 @@ async function editSaleTransaction(s, db, json) {
     date,JSON.stringify(items),total,customer,customerPhone,paymentType,previousDebt,canonicalReason,subtotal,discount,paidAmount,debtAmount,saleId
   ));
 
-  if (debtAmount > 0) {
-    const note=`قەرزی فاکتۆر - ${customerPhone} [فاکتۆر:${saleId}]`;
+  const invoiceNote=`قەرزی فاکتۆر - ${customerPhone} [فاکتۆر:${saleId}]`;
+  const reusableDebtId = linkedDebts[0]?.id || (invoicePayments.results || []).find(p=>p.debtId)?.debtId || crypto.randomUUID();
+  if (openDebtAmount > 1e-8) {
     if (linkedDebts.length) {
       const first=linkedDebts[0];
-      statements.push(db.prepare('UPDATE debts SET name=?,amount=?,note=?,date=? WHERE id=?').bind(customer,debtAmount,note,date,first.id));
-      for (const extra of linkedDebts.slice(1)) statements.push(db.prepare('DELETE FROM debts WHERE id=?').bind(extra.id));
+      statements.push(db.prepare('UPDATE debts SET name=?,amount=?,note=?,date=? WHERE id=? AND amount=?').bind(customer,openDebtAmount,invoiceNote,date,first.id,Number(first.amount||0)));
+      altinAppendChangeGuard(statements, db);
+      for (const extra of linkedDebts.slice(1)) {
+        statements.push(db.prepare('DELETE FROM debts WHERE id=? AND amount=?').bind(extra.id,Number(extra.amount||0)));
+        altinAppendChangeGuard(statements, db);
+      }
     } else {
-      statements.push(db.prepare('INSERT INTO debts(id,name,amount,note,date,currency) VALUES(?,?,?,?,?,?)').bind(crypto.randomUUID(),customer,debtAmount,note,date,s.currency==='USD'?'USD':'IQD'));
+      statements.push(db.prepare('INSERT INTO debts(id,name,amount,note,date,currency) VALUES(?,?,?,?,?,?)').bind(reusableDebtId,customer,openDebtAmount,invoiceNote,date,s.currency==='USD'?'USD':'IQD'));
     }
   } else {
-    for (const d of linkedDebts) statements.push(db.prepare('DELETE FROM debts WHERE id=?').bind(d.id));
+    for (const d of linkedDebts) {
+      statements.push(db.prepare('DELETE FROM debts WHERE id=? AND amount=?').bind(d.id,Number(d.amount||0)));
+      altinAppendChangeGuard(statements, db);
+    }
   }
   statements.push(db.prepare('INSERT INTO audit_logs(id,date,action,entity,entityId,details,actor) VALUES(?,?,?,?,?,?,?)').bind(
     crypto.randomUUID(),new Date().toISOString(),'EDIT','sale',saleId,JSON.stringify({subtotal,discount,total,paidAmount,debtAmount,customer,items}),s.actor||'system'
@@ -1916,7 +2014,62 @@ async function altinDeleteRecord(table, id, db, actor, json) {
   }
   const statements=[];
   const now=new Date().toISOString();
+  if (table === 'payments') {
+    const debtId=String(row.debtId||'');
+    const paid=Math.max(0,Number(row.amount||0));
+    if(debtId && paid>0) {
+      const current=await db.prepare('SELECT id,amount,name,note,date,currency FROM debts WHERE id=?').bind(debtId).first();
+      if(current) {
+        const currentAmount=Math.max(0,Number(current.amount||0));
+        const restored=currentAmount+paid;
+        statements.push(db.prepare('UPDATE debts SET amount=? WHERE id=? AND amount=?').bind(restored,debtId,currentAmount));
+        altinAppendChangeGuard(statements,db);
+      } else {
+        let restored=paid;
+        let name=String(row.customer||'کڕیار');
+        let note=String(row.note||'قەرز گەڕێندرایەوە بەهۆی هەڵوەشاندنەوەی پارەدان').slice(0,500);
+        let date=String(row.date||now);
+        let currency=row.currency==='USD'?'USD':'IQD';
+        if(debtId.startsWith('purchase-')) {
+          const purchase=await db.prepare('SELECT supplier,debtAmount,date,currency FROM purchases WHERE id=?').bind(debtId.slice('purchase-'.length)).first();
+          if(purchase) {
+            const paidElsewhere=await db.prepare('SELECT COALESCE(SUM(amount),0) AS total FROM payments WHERE debtId=? AND id<>?').bind(debtId,id).first();
+            restored=Math.max(0,Number(purchase.debtAmount||0)-Number(paidElsewhere?.total||0));
+            name=String(purchase.supplier||name); date=String(purchase.date||date); currency=purchase.currency==='USD'?'USD':'IQD';
+            note=`قەرزی کڕین • ژمارە: ${debtId.slice('purchase-'.length)}`;
+          }
+        } else {
+          const marker=String(row.note||'').match(/\[فاکتۆر:([^\]]+)\]/);
+          if(marker) {
+            const saleId=String(marker[1]).trim();
+            const sale=await db.prepare('SELECT customer,customerPhone,debtAmount,date FROM sales WHERE id=?').bind(saleId).first();
+            if(sale) {
+              const paidElsewhere=await db.prepare('SELECT COALESCE(SUM(amount),0) AS total FROM payments WHERE debtId=? AND id<>?').bind(debtId,id).first();
+              const returnRows=await db.prepare('SELECT items FROM returns').all();
+              let returnedValue=0;
+              for(const returnRow of (returnRows.results||[])) {
+                let returnItems=[];
+                try{returnItems=typeof returnRow.items==='string'?JSON.parse(returnRow.items||'[]'):(returnRow.items||[]);}catch{returnItems=[];}
+                if(Array.isArray(returnItems)) for(const item of returnItems) if(String(item?.sourceSaleId||'')===saleId) returnedValue+=Math.max(0,Number(item.qty)||0)*Math.max(0,Number(item.price)||0);
+              }
+              restored=Math.max(0,Number(sale.debtAmount||0)-Number(paidElsewhere?.total||0)-returnedValue);
+              name=String(sale.customer||name); date=String(sale.date||date); currency='IQD';
+              note=`قەرزی فاکتۆر - ${String(sale.customerPhone||'')} [فاکتۆر:${saleId}]`;
+            }
+          }
+        }
+        if(restored>1e-8) statements.push(db.prepare('INSERT INTO debts(id,name,amount,note,date,currency) VALUES(?,?,?,?,?,?)').bind(debtId,name,restored,note,date,currency));
+      }
+    }
+  }
   if (table === 'sales') {
+    const paymentHistory=await db.prepare('SELECT COUNT(*) AS n FROM payments WHERE note LIKE ?').bind(`%[فاکتۆر:${id}]%`).first();
+    if(Number(paymentHistory?.n||0)>0) return json({success:false,error:'ئەم فاکتۆرە مێژووی پارەدان هەیە؛ بۆ پاراستنی حساب ناتوانرێت بسڕدرێتەوە.'},409);
+    const returnHistory=await db.prepare('SELECT id,items FROM returns').all();
+    for(const ret of (returnHistory.results||[])) {
+      let returnItems=[]; try{returnItems=typeof ret.items==='string'?JSON.parse(ret.items||'[]'):(ret.items||[]);}catch{returnItems=[];}
+      if(Array.isArray(returnItems) && returnItems.some(x=>String(x?.sourceSaleId||'')===String(id))) return json({success:false,error:'ئەم فاکتۆرە مرجوعاتی بەستراوی هەیە؛ سەرەتا مرجوعاتەکان چارەسەر بکە.'},409);
+    }
     let items=[]; try { items=typeof row.items==='string'?JSON.parse(row.items||'[]'):(row.items||[]); } catch { items=[]; }
     if (!Array.isArray(items)) items=[];
     const grouped=new Map();
@@ -1957,7 +2110,12 @@ async function altinDeleteRecord(table, id, db, actor, json) {
     let items=[]; try { items=typeof row.items==='string'?JSON.parse(row.items||'[]'):(row.items||[]); } catch { items=[]; }
     if (!Array.isArray(items)) items=[];
     const grouped=new Map();
-    for(const x of items) if(x&&!x.manual&&x.product) grouped.set(String(x.product),(grouped.get(String(x.product))||0)+Math.max(0,Number(x.qty)||0));
+    const returnedBySale=new Map();
+    for(const x of items) {
+      if(x&&!x.manual&&x.product) grouped.set(String(x.product),(grouped.get(String(x.product))||0)+Math.max(0,Number(x.qty)||0));
+      const saleId=String(x?.sourceSaleId||'');
+      if(saleId) returnedBySale.set(saleId,(returnedBySale.get(saleId)||0)+Math.max(0,Number(x.qty)||0)*Math.max(0,Number(x.price)||0));
+    }
     for(const [pid,qty] of grouped) {
       const p=await db.prepare('SELECT id,name,qty FROM products WHERE id=?').bind(pid).first();
       if(!p) continue;
@@ -1967,8 +2125,40 @@ async function altinDeleteRecord(table, id, db, actor, json) {
       altinAppendChangeGuard(statements, db);
       statements.push(db.prepare('INSERT INTO stock_movements(id,date,productId,type,qty,beforeQty,afterQty,refId,note) VALUES(?,?,?,?,?,?,?,?,?)').bind(crypto.randomUUID(),now,pid,'return-delete',-qty,before,Math.max(0,after),id,'گەڕاندنەوەی مرجوعات'));
     }
+    const allReturns=await db.prepare('SELECT id,items FROM returns WHERE id<>?').bind(id).all();
+    const otherReturnTotals=new Map();
+    for(const other of (allReturns.results||[])) {
+      let otherItems=[]; try{otherItems=typeof other.items==='string'?JSON.parse(other.items||'[]'):(other.items||[]);}catch{otherItems=[];}
+      if(!Array.isArray(otherItems)) continue;
+      for(const item of otherItems) {
+        const saleId=String(item?.sourceSaleId||'');
+        if(saleId) otherReturnTotals.set(saleId,(otherReturnTotals.get(saleId)||0)+Math.max(0,Number(item.qty)||0)*Math.max(0,Number(item.price)||0));
+      }
+    }
+    for (const [saleId] of returnedBySale) {
+      const sale=await db.prepare('SELECT id,debtAmount,customer,customerPhone,date FROM sales WHERE id=?').bind(saleId).first();
+      if(!sale) continue;
+      const linkedDebt=await db.prepare('SELECT id,amount FROM debts WHERE note LIKE ? ORDER BY date LIMIT 1').bind(`%[فاکتۆر:${saleId}]%`).first();
+      const taggedPayment=await db.prepare('SELECT debtId FROM payments WHERE note LIKE ? ORDER BY date LIMIT 1').bind(`%[فاکتۆر:${saleId}]%`).first();
+      const debtId=String(linkedDebt?.id||taggedPayment?.debtId||crypto.randomUUID());
+      const paidRow=await db.prepare('SELECT COALESCE(SUM(amount),0) AS paid FROM payments WHERE debtId=?').bind(debtId).first();
+      const target=Math.max(0,Number(sale.debtAmount||0)-Number(paidRow?.paid||0)-Number(otherReturnTotals.get(saleId)||0));
+      const current=await db.prepare('SELECT id,amount FROM debts WHERE id=?').bind(debtId).first();
+      const currentAmount = Number(current?.amount||0);
+      if(target>1e-8) {
+        const linkedNote=`قەرزی فاکتۆر - ${String(sale.customerPhone||'')} [فاکتۆر:${saleId}]`;
+        statements.push(current
+          ? db.prepare('UPDATE debts SET amount=?,name=?,note=? WHERE id=? AND amount=?').bind(target,String(sale.customer||''),linkedNote,debtId,currentAmount)
+          : db.prepare('INSERT INTO debts(id,name,amount,note,date,currency) VALUES(?,?,?,?,?,?)').bind(debtId,String(sale.customer||''),target,linkedNote,String(sale.date||now),'IQD'));
+        if (current) altinAppendChangeGuard(statements,db);
+      } else if(current) {
+        statements.push(db.prepare('DELETE FROM debts WHERE id=? AND amount=?').bind(debtId,currentAmount));
+        altinAppendChangeGuard(statements,db);
+      }
+    }
   }
   statements.push(db.prepare(`DELETE FROM ${realTable} WHERE id=?`).bind(id));
+  altinAppendChangeGuard(statements, db);
   statements.push(db.prepare('INSERT INTO audit_logs(id,date,action,entity,entityId,details,actor) VALUES(?,?,?,?,?,?,?)').bind(crypto.randomUUID(),now,'DELETE',table,id,JSON.stringify({recordDate:row.date||'',name:row.name||row.customer||''}),actor||'system'));
   const conflict = await altinBatchOrConflict(db, statements, json);
   if (conflict) return conflict;
@@ -2004,7 +2194,7 @@ async function returnTransaction(x, db, json) {
   const sourceSaleIds = [...new Set(items.map(item => String(item.sourceSaleId || x.sourceSaleId || "")).filter(Boolean))];
   const sourceSales = new Map();
   for (const sourceSaleId of sourceSaleIds) {
-    const row = await db.prepare("SELECT id,date,items FROM sales WHERE id=?").bind(sourceSaleId).first();
+    const row = await db.prepare("SELECT id,date,items,debtAmount,customer,customerPhone,paymentType FROM sales WHERE id=?").bind(sourceSaleId).first();
     if (!row) return json({error:"فاتورەی فرۆشتنی بنەڕەت نەدۆزرایەوە."},400);
     let sourceItems;
     try { sourceItems = typeof row.items === "string" ? JSON.parse(row.items || "[]") : row.items; } catch { sourceItems = []; }
@@ -2079,7 +2269,7 @@ async function returnTransaction(x, db, json) {
   const statements = [];
   for (const product of products) {
     const qty = grouped.get(product.id);
-    statements.push(db.prepare("UPDATE products SET qty=qty+? WHERE id=?").bind(qty, product.id));
+    statements.push(db.prepare("UPDATE products SET qty=qty+? WHERE id=? AND qty=?").bind(qty, product.id, Number(product.qty||0)));
     altinAppendChangeGuard(statements, db);
     statements.push(db.prepare(`INSERT INTO stock_movements
       (id,date,productId,type,qty,beforeQty,afterQty,refId,note) VALUES (?,?,?,?,?,?,?,?,?)`).bind(
@@ -2087,16 +2277,138 @@ async function returnTransaction(x, db, json) {
         Number(product.qty || 0) + qty, returnId, "گەڕاندنەوەی کاڵا"
       ));
   }
+  // Offset any still-open invoice debt for returns linked to a source invoice.
+  // If the refund exceeds the open debt, retain the excess in the audit record.
+  const returnTotalsBySale = new Map();
+  for (const item of savedItems) {
+    const saleId = String(item.sourceSaleId || x.sourceSaleId || "");
+    if (saleId) returnTotalsBySale.set(saleId, (returnTotalsBySale.get(saleId) || 0) + Number(item.qty) * Number(item.price));
+  }
+  let totalDebtOffset = 0;
+  let totalRefundDue = 0;
+  for (const [saleId, requestedOffset] of returnTotalsBySale) {
+    const linked = await db.prepare("SELECT id,amount FROM debts WHERE note LIKE ? ORDER BY date ASC")
+      .bind(`%[فاکتۆر:${saleId}]%`).all();
+    let remainingOffset = Math.max(0, requestedOffset);
+    for (const debt of (linked.results || [])) {
+      if (remainingOffset <= 0) break;
+      const current = Math.max(0, Number(debt.amount || 0));
+      const applied = Math.min(current, remainingOffset);
+      if (applied <= 0) continue;
+      const next = current - applied;
+      statements.push(next <= 1e-8
+        ? db.prepare("DELETE FROM debts WHERE id=? AND amount=?").bind(debt.id,current)
+        : db.prepare("UPDATE debts SET amount=? WHERE id=? AND amount=?").bind(next,debt.id,current));
+      altinAppendChangeGuard(statements, db);
+      remainingOffset -= applied;
+      totalDebtOffset += applied;
+    }
+    totalRefundDue += remainingOffset;
+  }
   statements.push(db.prepare(`INSERT INTO returns (id,date,items,total,customer,reason) VALUES (?,?,?,?,?,?)`).bind(
     returnId, date, JSON.stringify(savedItems), total, String(x.customer || "سەردانکەر"), String(x.reason || "نادیار")
   ));
   statements.push(db.prepare(`INSERT INTO audit_logs (id,date,action,entity,entityId,details,actor) VALUES (?,?,?,?,?,?,?)`).bind(
     crypto.randomUUID(), date, "RETURN", "return", returnId,
-    JSON.stringify({ total, customer: x.customer || "", items: savedItems }), x.actor || "system"
+    JSON.stringify({ total, debtOffset:totalDebtOffset, refundDue:totalRefundDue, customer: x.customer || "", items: savedItems }), x.actor || "system"
   ));
   const conflict = await altinBatchOrConflict(db, statements, json);
   if (conflict) return conflict;
-  return json({ success: true, id: returnId, total });
+  return json({ success: true, id: returnId, total, debtOffset: totalDebtOffset, refundDue: totalRefundDue });
+}
+
+/* =========================================================
+   PURCHASE BASKET — all lines commit atomically as one supplier invoice
+========================================================= */
+async function purchaseBatchTransaction(x, db, json) {
+  const rawItems = Array.isArray(x?.items) ? x.items : [];
+  if (!rawItems.length) return json({success:false,error:"سەبەتەی کڕین بەتاڵە."},400);
+  if (rawItems.length > 100) return json({success:false,error:"لە هەر فاتورەیەکدا زیاتر لە ١٠٠ ڕیزی کاڵا ناتوانرێت تۆمار بکرێت."},400);
+
+  const items=[];
+  const seenIds=new Set();
+  for (const raw of rawItems) {
+    const productId=String(raw?.product||'').trim();
+    const qty=Number(raw?.qty), price=Number(raw?.price);
+    if (!productId || !(qty>0) || !Number.isFinite(qty) || !Number.isFinite(price) || price<0) {
+      return json({success:false,error:"کاڵا، ژمارە یان نرخی یەکێک لە ڕیزەکانی سەبەتە دروست نییە."},400);
+    }
+    const p=await db.prepare("SELECT * FROM products WHERE id=?").bind(productId).first();
+    if (!p) return json({success:false,error:"یەکێک لە کاڵاکانی سەبەتە لە کۆگادا نەدۆزرایەوە؛ تکایە داتاکان نوێ بکەرەوە."},409);
+    const purchaseId=String(raw.id||crypto.randomUUID());
+    if (seenIds.has(purchaseId)) return json({success:false,error:"ژمارەی فاتورەی دووبارە هەیە."},400);
+    seenIds.add(purchaseId);
+    const lineTotal=qty*price;
+    if (!Number.isFinite(lineTotal)) return json({success:false,error:"کۆی نرخی یەکێک لە کاڵاکان زۆر گەورەیە."},400);
+    items.push({id:purchaseId,product:productId,qty,price,lineTotal,p});
+  }
+
+  const total=items.reduce((sum,item)=>sum+item.lineTotal,0);
+  if (!Number.isFinite(total)) return json({success:false,error:"کۆی گشتیی کڕین دروست نییە."},400);
+  const paymentType=x.paymentType==="credit"?"credit":"cash";
+  const currency=String(x.currency||"IQD").toUpperCase()==="USD"?"USD":"IQD";
+  const supplier=String(x.supplier||"").trim();
+  if (paymentType==="credit" && !supplier) return json({success:false,error:"بۆ کڕینی قەرز، ناوی فرۆشیار/کۆمپانیا پێویستە."},400);
+  const date=String(x.date||new Date().toISOString());
+  const batchId=String(x.batchId||crypto.randomUUID());
+  let paidAmount=paymentType==="cash"?total:Math.max(0,Number(x.paidAmount)||0);
+  if (!Number.isFinite(paidAmount)) return json({success:false,error:"بڕی پارەی دراو دروست نییە."},400);
+  paidAmount=Math.min(total,paidAmount);
+  const savedFxRaw=Number(await megaGet(db,"usdRate",1310));
+  const exchangeRate=Number.isFinite(savedFxRaw)&&savedFxRaw>=1&&savedFxRaw<=1000000000?savedFxRaw:1310;
+  for (const item of items) {
+    item.buyIQD=currency==="USD"?item.price*exchangeRate:item.price;
+    if (!Number.isFinite(item.buyIQD)) return json({success:false,error:"نرخی کڕین بە دینار هەژمار نەکرایەوە."},400);
+  }
+
+  // Allocate the invoice payment proportionally across lines; the final line absorbs rounding drift.
+  let paidAssigned=0;
+  for (let i=0;i<items.length;i++) {
+    const item=items[i];
+    item.paidAmount = i===items.length-1
+      ? Math.max(0,Math.min(item.lineTotal,paidAmount-paidAssigned))
+      : (total>0?Math.min(item.lineTotal,paidAmount*item.lineTotal/total):0);
+    paidAssigned+=item.paidAmount;
+    item.debtAmount=Math.max(0,item.lineTotal-item.paidAmount);
+  }
+
+  // Update each product once, while preserving per-line prices and stock movement history.
+  const groups=new Map();
+  for (const item of items) {
+    if(!groups.has(item.product)) groups.set(item.product,{product:item.p,qty:0,finalBuyIQD:item.buyIQD,items:[]});
+    const group=groups.get(item.product);group.qty+=item.qty;group.finalBuyIQD=item.buyIQD;group.items.push(item);
+  }
+  const statements=[];
+  for (const [productId,group] of groups) {
+    const before=Number(group.product.qty||0),after=before+group.qty;
+    statements.push(db.prepare("UPDATE products SET qty=qty+?,buy=? WHERE id=? AND qty=?")
+      .bind(group.qty,group.finalBuyIQD,productId,before));
+    altinAppendChangeGuard(statements,db);
+    let running=before;
+    for (const item of group.items) {
+      const next=running+item.qty;
+      statements.push(db.prepare("INSERT INTO stock_movements (id,date,productId,type,qty,beforeQty,afterQty,refId,note) VALUES (?,?,?,?,?,?,?,?,?)")
+        .bind(crypto.randomUUID(),date,productId,"purchase",item.qty,running,next,item.id,"کڕین • سەبەتەی کڕین"));
+      running=next;
+    }
+  }
+
+  for (const item of items) {
+    statements.push(db.prepare("INSERT INTO purchases (id,product,qty,price,supplier,date,paymentType,paidAmount,debtAmount,total,currency,buyIQD,batchId) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)")
+      .bind(item.id,item.product,item.qty,item.price,supplier,date,paymentType,item.paidAmount,item.debtAmount,item.lineTotal,currency,item.buyIQD,batchId));
+    if (item.debtAmount>0) {
+      statements.push(db.prepare("INSERT INTO debts (id,name,amount,note,date,currency) VALUES (?,?,?,?,?,?)")
+        .bind(`purchase-${item.id}`,supplier||"فرۆشیاری نەناسراو",item.debtAmount,`قەرزی کڕین • ژمارە: ${item.id}`,date,currency));
+    }
+    statements.push(db.prepare("INSERT INTO audit_logs (id,date,action,entity,entityId,details,actor) VALUES (?,?,?,?,?,?,?)")
+      .bind(crypto.randomUUID(),date,"CREATE","purchase",item.id,JSON.stringify({batchId,product:item.product,qty:item.qty,price:item.price,buyIQD:item.buyIQD,exchangeRate,total:item.lineTotal,paidAmount:item.paidAmount,debtAmount:item.debtAmount,supplier,paymentType,currency}),x.actor||"system"));
+  }
+  statements.push(db.prepare("INSERT INTO audit_logs (id,date,action,entity,entityId,details,actor) VALUES (?,?,?,?,?,?,?)")
+    .bind(crypto.randomUUID(),date,"CREATE","purchase-batch",batchId,JSON.stringify({count:items.length,total,paidAmount,debtAmount:Math.max(0,total-paidAmount),supplier,paymentType,currency,items:items.map(i=>({id:i.id,product:i.product,qty:i.qty,price:i.price}))}),x.actor||"system"));
+
+  const conflict=await altinBatchOrConflict(db,statements,json);
+  if(conflict)return conflict;
+  return json({success:true,batchId,ids:items.map(i=>i.id),count:items.length,total,paidAmount,debtAmount:Math.max(0,total-paidAmount),exchangeRate,priceSync:true});
 }
 
 /* =========================================================
@@ -2114,9 +2426,8 @@ async function purchaseTransaction(x, db, json) {
   if (!Number.isFinite(total)) return json({ error: "Invalid purchase total" }, 400);
   const paymentType = x.paymentType === "credit" ? "credit" : "cash";
   const currency = x.currency === "USD" ? "USD" : "IQD";
-  const fxInput = Number(x.usdRate);
-  const savedFx = Number(await megaGet(db, "usdRate", 1310)) || 1310;
-  const exchangeRate = Number.isFinite(fxInput) && fxInput >= 1 && fxInput <= 1000000000 ? fxInput : savedFx;
+  const savedFxRaw = Number(await megaGet(db, "usdRate", 1310));
+  const exchangeRate = Number.isFinite(savedFxRaw) && savedFxRaw >= 1 && savedFxRaw <= 1000000000 ? savedFxRaw : 1310;
   const buyIQD = currency === "USD" ? price * exchangeRate : price;
   if (!Number.isFinite(buyIQD)) return json({error:"Invalid IQD-normalized purchase price"},400);
   const paidAmount = paymentType === "cash"
@@ -2127,7 +2438,7 @@ async function purchaseTransaction(x, db, json) {
   const supplier = String(x.supplier || "").trim();
   const purchaseId = x.id || crypto.randomUUID();
   const statements = [
-    db.prepare(`UPDATE products SET qty=qty+?, buy=? WHERE id=?`).bind(q, buyIQD, p.id)
+    db.prepare(`UPDATE products SET qty=qty+?, buy=? WHERE id=? AND qty=?`).bind(q, buyIQD, p.id, Number(p.qty||0))
   ];
   altinAppendChangeGuard(statements, db);
   statements.push(
@@ -2147,6 +2458,87 @@ async function purchaseTransaction(x, db, json) {
   const conflict = await altinBatchOrConflict(db, statements, json);
   if (conflict) return conflict;
   return json({ success: true, id: purchaseId, total, paidAmount, debtAmount, buyIQD, exchangeRate, priceSync: true });
+}
+
+/* =========================================================
+   SAFE PURCHASE EDIT
+   Reconciles the inventory, purchase row and supplier debt atomically.
+   Purchases with recorded settlement payments are blocked to preserve the ledger.
+========================================================= */
+async function editPurchaseTransaction(x, db, json) {
+  const id=String(x?.id||'').trim();
+  if(!id) return json({success:false,error:'ژمارەی کڕین پێویستە.'},400);
+  const old=await db.prepare('SELECT * FROM purchases WHERE id=?').bind(id).first();
+  if(!old) return json({success:false,error:'تۆماری کڕین نەدۆزرایەوە.'},404);
+  const paymentCount=await db.prepare('SELECT COUNT(*) AS n FROM payments WHERE debtId=?').bind(`purchase-${id}`).first();
+  if(Number(paymentCount?.n||0)>0) return json({success:false,error:'ئەم کڕینە مێژووی پارەدان هەیە؛ بۆ پاراستنی مێژوو دەستکاریی کۆیی ڕێگەپێدراو نییە.'},409);
+  const oldProductId=String(old.product||'');
+  const productId=String(x.product||oldProductId);
+  const qty=x.qty===undefined?Number(old.qty):Number(x.qty);
+  const price=x.price===undefined?Number(old.price):Number(x.price);
+  if(!(qty>0)||!Number.isFinite(qty)||!Number.isFinite(price)||price<0||qty>1e9||price>1e12) return json({success:false,error:'ژمارە یان نرخی کڕین دروست نییە.'},400);
+  const product=await db.prepare('SELECT * FROM products WHERE id=?').bind(productId).first();
+  if(!product) return json({success:false,error:'کاڵای کڕینەکە نەدۆزرایەوە.'},404);
+  const currency=x.currency==='USD'?'USD':x.currency==='IQD'?'IQD':(String(old.currency||'IQD').toUpperCase()==='USD'?'USD':'IQD');
+  const savedFxRaw=Number(await megaGet(db,'usdRate',1310));
+  const fx=Number.isFinite(savedFxRaw)&&savedFxRaw>=1&&savedFxRaw<=1e9?savedFxRaw:1310;
+  const buyIQD=currency==='USD'?price*fx:price;
+  const total=qty*price;
+  if(!Number.isFinite(total)||!Number.isFinite(buyIQD)) return json({success:false,error:'کۆی نرخی کڕین دروست نییە.'},400);
+  const paymentType=x.paymentType===undefined?(String(old.paymentType||'cash')==='credit'?'credit':'cash'):(x.paymentType==='credit'?'credit':'cash');
+  const requestedPaid=x.paidAmount===undefined?Number(old.paidAmount||0):Number(x.paidAmount);
+  if(!Number.isFinite(requestedPaid)||requestedPaid<0) return json({success:false,error:'بڕی پارەی دراو دروست نییە.'},400);
+  const paidAmount=paymentType==='cash'?total:Math.min(total,requestedPaid);
+  const debtAmount=Math.max(0,total-paidAmount);
+  const supplier=String(x.supplier===undefined?(old.supplier||''):(x.supplier||'')).trim().slice(0,200);
+  const date=String(x.date||old.date||new Date().toISOString()).slice(0,50);
+  const previousProduct=oldProductId===productId?product:await db.prepare('SELECT * FROM products WHERE id=?').bind(oldProductId).first();
+  if(oldProductId!==productId&&!previousProduct) return json({success:false,error:'کاڵای پێشووی ئەم کڕینە لە کۆگا نییە؛ بۆ پاراستنی ژمارەی کۆگا ناتوانرێت بگۆڕدرێت.'},409);
+  const statements=[];
+  const now=new Date().toISOString();
+  if(oldProductId===productId) {
+    const before=Number(product.qty||0), delta=qty-Number(old.qty||0), after=before+delta;
+    if(after < -1e-8) return json({success:false,error:`کۆگای ${product.name} بەشی پێویست نییە بۆ کەمکردنەوەی ئەم کڕینە.`},409);
+    const latest=await db.prepare('SELECT id,date FROM purchases WHERE product=? AND id<>? ORDER BY date DESC,rowid DESC LIMIT 1').bind(productId,id).first();
+    const updateBuy= !latest || date >= String(latest.date||'');
+    statements.push(updateBuy
+      ? db.prepare('UPDATE products SET qty=?,buy=? WHERE id=? AND qty=?').bind(Math.max(0,after),buyIQD,productId,before)
+      : db.prepare('UPDATE products SET qty=? WHERE id=? AND qty=?').bind(Math.max(0,after),productId,before));
+    altinAppendChangeGuard(statements,db);
+    if(Math.abs(delta)>1e-8) statements.push(db.prepare('INSERT INTO stock_movements(id,date,productId,type,qty,beforeQty,afterQty,refId,note) VALUES(?,?,?,?,?,?,?,?,?)').bind(crypto.randomUUID(),now,productId,'purchase-edit',delta,before,Math.max(0,after),id,'دەستکاری کڕین'));
+  } else {
+    const beforeOld=Number(previousProduct.qty||0), afterOld=beforeOld-Number(old.qty||0);
+    if(afterOld < -1e-8) return json({success:false,error:`کۆگای ${previousProduct.name} بۆ گەڕاندنەوەی بڕی کڕینی پێشووی بەشی پێویست نییە.`},409);
+    const beforeNew=Number(product.qty||0), afterNew=beforeNew+qty;
+    const latestNew=await db.prepare('SELECT id,date FROM purchases WHERE product=? AND id<>? ORDER BY date DESC,rowid DESC LIMIT 1').bind(productId,id).first();
+    const updateNewBuy=!latestNew || date>=String(latestNew.date||'');
+    statements.push(db.prepare('UPDATE products SET qty=? WHERE id=? AND qty=?').bind(Math.max(0,afterOld),oldProductId,beforeOld));
+    altinAppendChangeGuard(statements,db);
+    statements.push(updateNewBuy
+      ? db.prepare('UPDATE products SET qty=?,buy=? WHERE id=? AND qty=?').bind(afterNew,buyIQD,productId,beforeNew)
+      : db.prepare('UPDATE products SET qty=? WHERE id=? AND qty=?').bind(afterNew,productId,beforeNew));
+    altinAppendChangeGuard(statements,db);
+    statements.push(db.prepare('INSERT INTO stock_movements(id,date,productId,type,qty,beforeQty,afterQty,refId,note) VALUES(?,?,?,?,?,?,?,?,?)').bind(crypto.randomUUID(),now,oldProductId,'purchase-edit',-Number(old.qty||0),beforeOld,Math.max(0,afterOld),id,'گۆڕینی کاڵای کڕین'));
+    statements.push(db.prepare('INSERT INTO stock_movements(id,date,productId,type,qty,beforeQty,afterQty,refId,note) VALUES(?,?,?,?,?,?,?,?,?)').bind(crypto.randomUUID(),now,productId,'purchase-edit',qty,beforeNew,afterNew,id,'گۆڕینی کاڵای کڕین'));
+  }
+  statements.push(db.prepare('UPDATE purchases SET product=?,qty=?,price=?,supplier=?,date=?,paymentType=?,paidAmount=?,debtAmount=?,total=?,currency=?,buyIQD=? WHERE id=?').bind(productId,qty,price,supplier,date,paymentType,paidAmount,debtAmount,total,currency,buyIQD,id));
+  const debtId=`purchase-${id}`;
+  const currentDebt=await db.prepare('SELECT id,amount FROM debts WHERE id=?').bind(debtId).first();
+  if(debtAmount>1e-8) {
+    if(currentDebt) {
+      statements.push(db.prepare('UPDATE debts SET name=?,amount=?,note=?,date=?,currency=? WHERE id=? AND amount=?').bind(supplier||'فرۆشیاری نەناسراو',debtAmount,`قەرزی کڕین • ژمارە: ${id}`,date,currency,debtId,Number(currentDebt.amount||0)));
+      altinAppendChangeGuard(statements,db);
+    } else {
+      statements.push(db.prepare('INSERT INTO debts(id,name,amount,note,date,currency) VALUES(?,?,?,?,?,?)').bind(debtId,supplier||'فرۆشیاری نەناسراو',debtAmount,`قەرزی کڕین • ژمارە: ${id}`,date,currency));
+    }
+  } else if(currentDebt) {
+    statements.push(db.prepare('DELETE FROM debts WHERE id=? AND amount=?').bind(debtId,Number(currentDebt.amount||0)));
+    altinAppendChangeGuard(statements,db);
+  }
+  statements.push(db.prepare('INSERT INTO audit_logs(id,date,action,entity,entityId,details,actor) VALUES(?,?,?,?,?,?,?)').bind(crypto.randomUUID(),now,'EDIT','purchase',id,JSON.stringify({oldProductId,productId,oldQty:Number(old.qty||0),qty,price,total,paidAmount,debtAmount,currency,supplier}),x.actor||'system'));
+  const conflict=await altinBatchOrConflict(db,statements,json);
+  if(conflict) return conflict;
+  return json({success:true,id,total,paidAmount,debtAmount,currency,buyIQD});
 }
 
 /* =========================================================
@@ -2197,6 +2589,17 @@ async function paymentTransaction(
     Number(d.amount) -
     paid;
 
+  const isPurchaseDebt = String(d.id || "").startsWith("purchase-") || String(d.note || "").includes("قەرزی کڕین");
+  const markers = [...String(d.note || "").matchAll(/\[فاکتۆر:[^\]]+\]/g)].map(m=>m[0]);
+  let paymentNote;
+  if(isPurchaseDebt) {
+    paymentNote = `قەرزی کڕین • ${String(d.note || x.note || "پارەدان").slice(0,400)}`;
+  } else {
+    paymentNote = String(x.note || d.note || "پارەدان").slice(0,420);
+    for(const marker of markers) if(!paymentNote.includes(marker)) paymentNote += ` ${marker}`;
+    paymentNote = paymentNote.slice(0,500);
+  }
+
   const statements = [
 
     db.prepare(
@@ -2218,35 +2621,19 @@ async function paymentTransaction(
       d.name,
       paid,
       d.currency || (x.currency === "USD" ? "USD" : "IQD"),
-      ((String(d.id || "").startsWith("purchase-") || String(d.note || "").includes("قەرزی کڕین"))
-        ? `قەرزی کڕین • ${String(d.note || x.note || "پارەدان").slice(0,400)}`
-        : String(x.note || d.note || "پارەدان").slice(0,500)),
+      paymentNote,
       x.date || new Date().toISOString(),
       String(x.paymentMethod || "نەقد").slice(0,80)
     )
 
   ];
 
-  if (rem <= 0) {
-
-    statements.push(
-      db.prepare(
-        "DELETE FROM debts WHERE id=?"
-      ).bind(d.id)
-    );
-
+  if (rem <= 1e-8) {
+    statements.push(db.prepare("DELETE FROM debts WHERE id=? AND amount=?").bind(d.id,currentDebt));
+    altinAppendChangeGuard(statements,db);
   } else {
-
-    statements.push(
-      db.prepare(
-        `UPDATE debts
-         SET amount=?
-         WHERE id=?`
-      ).bind(
-        rem,
-        d.id
-      )
-    );
+    statements.push(db.prepare("UPDATE debts SET amount=? WHERE id=? AND amount=?").bind(rem,d.id,currentDebt));
+    altinAppendChangeGuard(statements,db);
   }
 
   statements.push(
@@ -2278,9 +2665,8 @@ async function paymentTransaction(
     )
   );
 
-  await db.batch(
-    statements
-  );
+  const conflict=await altinBatchOrConflict(db,statements,json);
+  if(conflict) return conflict;
 
   return json({
     success: true,
