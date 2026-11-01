@@ -802,9 +802,10 @@ export default {
         const usdRate = await megaGet(env.DB,"usdRate",1310);
         const returnDays = await megaGet(env.DB,"returnDays",3);
         const openingCash = await megaGet(env.DB,"openingCash",0);
+        const cashboxAdjustment = await megaGet(env.DB,"cashboxAdjustment",-611640);
         const dailySalesTarget = await megaGet(env.DB,"dailySalesTarget",90000);
         const targetGrossMargin = await megaGet(env.DB,"targetGrossMargin",40);
-        return json({success:true,settings:{currency,usdRate,returnDays,openingCash,dailySalesTarget,targetGrossMargin}});
+        return json({success:true,settings:{currency,usdRate,returnDays,openingCash,cashboxAdjustment,dailySalesTarget,targetGrossMargin}});
       }
 
       if (path === "/api/mega/settings" && request.method === "PUT") {
@@ -827,6 +828,11 @@ export default {
           const openingCash=Number(d.openingCash);
           if (!Number.isFinite(openingCash) || openingCash < 0 || openingCash > 1e15) return json({success:false,error:"بڕی پارەی سەرەتایی سندوق دروست نییە."},400);
           updates.push(["openingCash",openingCash]);
+        }
+        if (d.cashboxAdjustment!==undefined) {
+          const cashboxAdjustment=Number(d.cashboxAdjustment);
+          if (!Number.isFinite(cashboxAdjustment) || Math.abs(cashboxAdjustment) > 1e15) return json({success:false,error:"بڕی ڕاستکردنەوەی سندوق دروست نییە."},400);
+          updates.push(["cashboxAdjustment",cashboxAdjustment]);
         }
         if (d.dailySalesTarget!==undefined) {
           const dailySalesTarget=Number(d.dailySalesTarget);

@@ -3052,6 +3052,14 @@ html.altin-dark-mode #sfSplash{background:#0f1115}
     <small style="display:block;margin-top:8px;line-height:1.7;">ئەم بڕە زیاد دەکرێت بە خالصی هەموو جوڵەی پارەی تۆمارکراو. بڕی سەرەتایی ئەو بڕەیە کە پێش یەکەم تۆمارکردنی فرۆشتن و کڕین لە سندوق هەبووە، نەک بڕی ئێستا.</small>
 </div>
 <div class="setting" style="display:block;">
+    <div style="font-weight:700;margin-bottom:8px;">ڕاستکردنەوەی پارەی سندوق (تەنها بۆ سندوق)</div>
+    <div class="fx-box">
+        <input id="cashboxAdjustment" type="number" step="1" inputmode="numeric" placeholder="-611640 د.ع">
+        <button class="btn gold" style="color:#fff;" onclick="saveCashboxAdjustment()">پاشەکەوتکردنی ڕاستکردنەوە</button>
+    </div>
+    <small style="display:block;margin-top:8px;line-height:1.7;">بڕی منفی کەم دەکات و بڕی پۆزەتیڤ زیاد دەکات لە سندوقی خەمڵێنراو. ئەم ڕاستکردنەوەیە خەرجی نییە و هیچ کاریگەرییەکی لەسەر قازانج، فرۆشتن، کڕین یان قەرز نییە.</small>
+</div>
+<div class="setting" style="display:block;">
     <div style="font-weight:800;margin-bottom:8px;">🎯 ئامانجی فرۆشتن و قازانج</div>
     <div class="formgrid">
         <div><label for="dailySalesTarget">ئامانجی فرۆشتنی ڕۆژانە (د.ع)</label><input id="dailySalesTarget" type="number" min="1" step="1000" inputmode="numeric" value="90000" placeholder="90000"></div>
@@ -3202,6 +3210,8 @@ html.altin-dark-mode #sfSplash{background:#0f1115}
         let appCurrency = localStorage.getItem(ALTIN_CURRENCY_KEY) || "IQD";
         let usdRate = Number(localStorage.getItem(ALTIN_RATE_KEY) || 1310);
         let openingCash = 0;
+        // One-time correction requested by the operator; applies only to the cashbox KPI.
+        let cashboxAdjustment = -611640;
         let dailySalesTarget = 90000;
         let targetGrossMargin = 40;
 
@@ -3261,6 +3271,24 @@ html.altin-dark-mode #sfSplash{background:#0f1115}
                 showMsg("سەرکەوتوو بوو", "پارەی سەرەتایی سندوق لە سێرڤەر پاشەکەوت کرا.");
             } catch (e) {
                 showMsg("هەڵە", "پارەی سەرەتایی پاشەکەوت نەکرا. دەسەڵاتی ڕێکخستن و پەیوەندی سێرڤەر بپشکنە.", true);
+            }
+        }
+        async function saveCashboxAdjustment() {
+            const input = $("cashboxAdjustment");
+            const value = Number(input?.value ?? 0);
+            if (!Number.isFinite(value) || Math.abs(value) > 1e15) {
+                showMsg("تێبینی", "بڕی ڕاستکردنەوەی سندوق دروست نییە.", true);
+                return;
+            }
+            try {
+                const result = await jf('/api/mega/settings','PUT',{cashboxAdjustment:value});
+                if (!result || !result.success) throw new Error("پاشەکەوتکردن سەرکەوتوو نەبوو");
+                cashboxAdjustment = value;
+                if (input) input.value = String(value);
+                renderAll();
+                showMsg("سەرکەوتوو بوو", "ڕاستکردنەوەی سندوق لە سێرڤەر پاشەکەوت کرا؛ قازانج و خەرجی ناگۆڕێت.");
+            } catch (e) {
+                showMsg("هەڵە", "ڕاستکردنەوەی سندوق پاشەکەوت نەکرا. دەسەڵاتی ڕێکخستن و پەیوەندی سێرڤەر بپشکنە.", true);
             }
         }
         async function saveBusinessTargets() {
@@ -6483,7 +6511,7 @@ ${localStorage.getItem('ALTIN_SHOP_PHONE')||''}`;
             // Every return reduces the estimated cashbox by its full return value,
             // regardless of whether it was settled in cash, offset against debt, or left unpaid.
             const allReturnCashOut = allReturns.reduce((sum,x)=>sum+Math.max(0,Number(x.total||0)),0);
-            const cashBalance = (Number(openingCash)||0) + allSaleCashIn + allCustomerDebtPaymentsIn - allPurchaseCashOut - allSupplierDebtPaymentsOut - allExpenseCashOut - allReturnCashOut;
+            const cashBalance = (Number(openingCash)||0) + (Number(cashboxAdjustment)||0) + allSaleCashIn + allCustomerDebtPaymentsIn - allPurchaseCashOut - allSupplierDebtPaymentsOut - allExpenseCashOut - allReturnCashOut;
 
             if($("dSales")) $("dSales").textContent = money(sTot - rTot);
             if($("dReturns")) $("dReturns").textContent = money(rTot);
@@ -7058,6 +7086,8 @@ setTimeout(()=>{const top=document.querySelector('.top');if(top&&!document.getEl
           if(Number.isFinite(rate)&&rate>=1){usdRate=rate;localStorage.setItem('ALTIN_USD_RATE',String(rate));updateCurrencyUI();}
           const cash=Number(sd?.settings?.openingCash);
           if(Number.isFinite(cash)&&cash>=0){openingCash=cash;if($('openingCash'))$('openingCash').value=String(cash);}
+          const adjustment=Number(sd?.settings?.cashboxAdjustment);
+          if(Number.isFinite(adjustment)){cashboxAdjustment=adjustment;if($('cashboxAdjustment'))$('cashboxAdjustment').value=String(adjustment);}
           const dailyTarget=Number(sd?.settings?.dailySalesTarget);
           if(Number.isFinite(dailyTarget)&&dailyTarget>0){dailySalesTarget=dailyTarget;if($('dailySalesTarget'))$('dailySalesTarget').value=String(dailyTarget);}
           const goalMargin=Number(sd?.settings?.targetGrossMargin);
