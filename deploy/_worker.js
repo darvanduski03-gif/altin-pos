@@ -4,11 +4,11 @@
 ========================================================= */
 const ALTIN_PERMS = {
   admin: ['*'],
-  manager: ['dashboard.view','sales.view','sales.create','sales.edit','sales.delete','purchases.view','purchases.create','purchases.edit','purchases.delete','debts.create','debts.view','debts.edit','returns.view','returns.create','returns.edit','returns.delete','stock.view','stock.create','stock.edit','expenses.view','expenses.create','expenses.edit','customers.view','customers.create','customers.edit','customers.delete','reports.view','settings.view','settings.edit','backup.manage','audit.view'],
+  manager: ['dashboard.view','sales.view','sales.create','sales.edit','sales.delete','purchases.view','purchases.create','purchases.edit','purchases.delete','debts.create','debts.view','debts.edit','returns.view','returns.create','returns.edit','returns.delete','stock.view','stock.create','stock.edit','expenses.view','expenses.create','expenses.edit','expenses.delete','customers.view','customers.create','customers.edit','customers.delete','reports.view','settings.view','settings.edit','backup.manage','audit.view'],
   cashier: ['dashboard.view','sales.view','sales.create','customers.view','customers.create','debts.create','debts.view','returns.view','returns.create'],
   seller: ['sales.view','sales.create','debts.view','debts.create','returns.view','returns.create'],
   warehouse: ['dashboard.view','purchases.view','purchases.create','purchases.edit','stock.view','stock.create','stock.edit'],
-  accountant: ['dashboard.view','sales.view','purchases.view','returns.view','expenses.view','expenses.create','expenses.edit','customers.view','customers.create','customers.edit','debts.view','debts.create','debts.edit','reports.view','audit.view']
+  accountant: ['dashboard.view','sales.view','purchases.view','returns.view','expenses.view','expenses.create','expenses.edit','expenses.delete','customers.view','customers.create','customers.edit','debts.view','debts.create','debts.edit','reports.view','audit.view']
 };
 const ALTIN_ROLE_LABELS = {admin:'Admin — بەڕێوەبەری گشتی',manager:'Manager — بەڕێوەبەر',cashier:'Cashier — فرۆشیار',seller:'Seller — فرۆشیار (فرۆشتن و مرجوعات)',warehouse:'Warehouse — کۆگا',accountant:'Accountant — ژمێریار'};
 // Per-isolate performance state; contains no user data or credentials.
@@ -175,6 +175,72 @@ async function altinEnsureAuthSchema(db, initialAdminPassword = ''){
   }
 }
 
+async function altinMigrateCashboxFlows(db) {
+  const done = await megaGet(db, "cashboxFlowMigrationV1", false);
+  if (done === true) return;
+  const currentFxRaw = Number(await megaGet(db, "usdRate", 1310));
+  const currentFx = Number.isFinite(currentFxRaw) && currentFxRaw >= 1 && currentFxRaw <= 1000000000 ? currentFxRaw : 1310;
+
+  // Infer each historical purchase's FX from its already-saved normalized buy cost
+  // when possible. If no historical FX was ever stored, freeze the best available rate.
+  const purchasesResult = await db.prepare("SELECT id,currency,price,paidAmount,buyIQD,exchangeRate,paidIQD FROM purchases").all();
+  const rateByPurchaseId = new Map();
+  let statements = [];
+  for (const row of purchasesResult.results || []) {
+    const usd = String(row.currency || "IQD").toUpperCase() === "USD";
+    const price = Math.max(0, Number(row.price || 0));
+    const storedRate = Number(row.exchangeRate || 0);
+    const inferredRate = usd && price > 0 && Number(row.buyIQD || 0) > 0 ? Number(row.buyIQD) / price : 0;
+    const rate = storedRate > 0 ? storedRate : (inferredRate > 0 ? inferredRate : currentFx);
+    rateByPurchaseId.set(String(row.id), rate);
+    const paid = Math.max(0, Number(row.paidAmount || 0));
+    const normalizedPaid = usd ? paid * rate : paid;
+    if (!(storedRate > 0) || !(Number(row.paidIQD || 0) > 0 || paid === 0)) {
+      statements.push(db.prepare("UPDATE purchases SET exchangeRate=?,paidIQD=? WHERE id=?").bind(rate, normalizedPaid, row.id));
+    }
+    if (statements.length >= 80) { await db.batch(statements); statements = []; }
+  }
+  if (statements.length) { await db.batch(statements); statements = []; }
+
+  // Payments had no normalized snapshot in older versions. Snapshot them once.
+  const paymentsResult = await db.prepare("SELECT id,debtId,amount,currency,exchangeRate,amountIQD FROM payments").all();
+  for (const row of paymentsResult.results || []) {
+    const usd = String(row.currency || "IQD").toUpperCase() === "USD";
+    const amount = Math.max(0, Number(row.amount || 0));
+    const oldRate = Number(row.exchangeRate || 0);
+    const purchaseRate = String(row.debtId || "").startsWith("purchase-") ? rateByPurchaseId.get(String(row.debtId).slice(9)) : 0;
+    const rate = oldRate > 0 ? oldRate : (purchaseRate > 0 ? purchaseRate : currentFx);
+    const normalized = usd ? amount * rate : amount;
+    if (!(oldRate > 0) || !(Number(row.amountIQD || 0) > 0 || amount === 0)) {
+      statements.push(db.prepare("UPDATE payments SET exchangeRate=?,amountIQD=? WHERE id=?").bind(rate, normalized, row.id));
+    }
+    if (statements.length >= 80) { await db.batch(statements); statements = []; }
+  }
+  if (statements.length) { await db.batch(statements); statements = []; }
+
+  // Recover old debt-offset details from the return audit entry. A legacy return
+  // without such detail follows the old behavior (full amount assumed paid back).
+  const auditResult = await db.prepare("SELECT entityId,details FROM audit_logs WHERE action='RETURN' AND entity='return'").all();
+  const auditByReturn = new Map();
+  for (const row of auditResult.results || []) {
+    try { auditByReturn.set(String(row.entityId), JSON.parse(String(row.details || "{}"))); } catch {}
+  }
+  const returnResult = await db.prepare("SELECT id,total,debtOffset,refundDue,refundCash FROM returns").all();
+  for (const row of returnResult.results || []) {
+    const audit = auditByReturn.get(String(row.id)) || {};
+    const total = Math.max(0, Number(row.total || 0));
+    const debtOffset = Math.min(total, Math.max(0, Number(audit.debtOffset ?? row.debtOffset ?? 0)));
+    // The old version sometimes stored refundDue=0 for unlinked returns; recompute it from the real offset.
+    const refundDue = Math.max(0, total - debtOffset);
+    const legacyCash = Object.prototype.hasOwnProperty.call(audit, "refundCash") ? Number(audit.refundCash) : refundDue;
+    const refundCash = Math.min(refundDue, Math.max(0, Number.isFinite(legacyCash) ? legacyCash : refundDue));
+    statements.push(db.prepare("UPDATE returns SET debtOffset=?,refundDue=?,refundCash=? WHERE id=?").bind(debtOffset, refundDue, refundCash, row.id));
+    if (statements.length >= 80) { await db.batch(statements); statements = []; }
+  }
+  if (statements.length) await db.batch(statements);
+  await megaSet(db, "cashboxFlowMigrationV1", true);
+}
+
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
@@ -249,11 +315,11 @@ export default {
           const legacyColumns = [
             ['products','name',"TEXT DEFAULT ''"], ['products','code',"TEXT DEFAULT ''"], ['products','buy','REAL DEFAULT 0'], ['products','sell','REAL DEFAULT 0'], ['products','qty','REAL DEFAULT 0'], ['products','min','REAL DEFAULT 0'],
             ['sales','date',"TEXT DEFAULT ''"], ['sales','items',"TEXT DEFAULT '[]'"], ['sales','total','REAL DEFAULT 0'], ['sales','customer',"TEXT DEFAULT ''"], ['sales','customerPhone',"TEXT DEFAULT ''"], ['sales','paymentType',"TEXT DEFAULT 'cash'"], ['sales','previousDebt','REAL DEFAULT 0'], ['sales','reason',"TEXT DEFAULT ''"], ['sales','subtotal','REAL DEFAULT 0'], ['sales','discount','REAL DEFAULT 0'], ['sales','paidAmount','REAL DEFAULT 0'], ['sales','debtAmount','REAL DEFAULT 0'],
-            ['purchases','product',"TEXT DEFAULT ''"], ['purchases','qty','REAL DEFAULT 0'], ['purchases','price','REAL DEFAULT 0'], ['purchases','supplier',"TEXT DEFAULT ''"], ['purchases','date',"TEXT DEFAULT ''"], ['purchases','paymentType',"TEXT DEFAULT 'cash'"], ['purchases','paidAmount','REAL DEFAULT 0'], ['purchases','debtAmount','REAL DEFAULT 0'], ['purchases','total','REAL DEFAULT 0'], ['purchases','currency',"TEXT DEFAULT 'IQD'"], ['purchases','buyIQD','REAL DEFAULT 0'], ['purchases','batchId',"TEXT DEFAULT ''"],
-            ['expenses','name',"TEXT DEFAULT ''"], ['expenses','amount','REAL DEFAULT 0'], ['expenses','date',"TEXT DEFAULT ''"],
+            ['purchases','product',"TEXT DEFAULT ''"], ['purchases','qty','REAL DEFAULT 0'], ['purchases','price','REAL DEFAULT 0'], ['purchases','supplier',"TEXT DEFAULT ''"], ['purchases','date',"TEXT DEFAULT ''"], ['purchases','paymentType',"TEXT DEFAULT 'cash'"], ['purchases','paidAmount','REAL DEFAULT 0'], ['purchases','debtAmount','REAL DEFAULT 0'], ['purchases','total','REAL DEFAULT 0'], ['purchases','currency',"TEXT DEFAULT 'IQD'"], ['purchases','buyIQD','REAL DEFAULT 0'], ['purchases','batchId',"TEXT DEFAULT ''"], ['purchases','paymentMethod',"TEXT DEFAULT 'نەقد'"], ['purchases','exchangeRate','REAL DEFAULT 0'], ['purchases','paidIQD','REAL DEFAULT 0'],
+            ['expenses','name',"TEXT DEFAULT ''"], ['expenses','amount','REAL DEFAULT 0'], ['expenses','date',"TEXT DEFAULT ''"], ['expenses','paymentMethod',"TEXT DEFAULT 'نەقد'"],
             ['debts','name',"TEXT DEFAULT ''"], ['debts','amount','REAL DEFAULT 0'], ['debts','note',"TEXT DEFAULT ''"], ['debts','date',"TEXT DEFAULT ''"], ['debts','currency',"TEXT DEFAULT 'IQD'"],
-            ['returns','date',"TEXT DEFAULT ''"], ['returns','items',"TEXT DEFAULT '[]'"], ['returns','total','REAL DEFAULT 0'], ['returns','customer',"TEXT DEFAULT ''"], ['returns','reason',"TEXT DEFAULT ''"],
-            ['payments','debtId',"TEXT DEFAULT ''"], ['payments','customer',"TEXT DEFAULT ''"], ['payments','amount','REAL DEFAULT 0'], ['payments','currency',"TEXT DEFAULT 'IQD'"], ['payments','note',"TEXT DEFAULT ''"], ['payments','date',"TEXT DEFAULT ''"], ['payments','paymentMethod',"TEXT DEFAULT 'نەقد'"],
+            ['returns','date',"TEXT DEFAULT ''"], ['returns','items',"TEXT DEFAULT '[]'"], ['returns','total','REAL DEFAULT 0'], ['returns','customer',"TEXT DEFAULT ''"], ['returns','reason',"TEXT DEFAULT ''"], ['returns','debtOffset','REAL DEFAULT 0'], ['returns','refundDue','REAL DEFAULT 0'], ['returns','refundCash','REAL DEFAULT 0'],
+            ['payments','debtId',"TEXT DEFAULT ''"], ['payments','customer',"TEXT DEFAULT ''"], ['payments','amount','REAL DEFAULT 0'], ['payments','currency',"TEXT DEFAULT 'IQD'"], ['payments','note',"TEXT DEFAULT ''"], ['payments','date',"TEXT DEFAULT ''"], ['payments','paymentMethod',"TEXT DEFAULT 'نەقد'"], ['payments','exchangeRate','REAL DEFAULT 0'], ['payments','amountIQD','REAL DEFAULT 0'],
             ['audit_logs','date',"TEXT DEFAULT ''"], ['audit_logs','action',"TEXT DEFAULT ''"], ['audit_logs','entity',"TEXT DEFAULT ''"], ['audit_logs','entityId',"TEXT DEFAULT ''"], ['audit_logs','details',"TEXT DEFAULT ''"], ['audit_logs','actor',"TEXT DEFAULT ''"],
             ['stock_movements','date',"TEXT DEFAULT ''"], ['stock_movements','productId',"TEXT DEFAULT ''"], ['stock_movements','type',"TEXT DEFAULT ''"], ['stock_movements','qty','REAL DEFAULT 0'], ['stock_movements','beforeQty','REAL DEFAULT 0'], ['stock_movements','afterQty','REAL DEFAULT 0'], ['stock_movements','refId',"TEXT DEFAULT ''"], ['stock_movements','note',"TEXT DEFAULT ''"]
           ];
@@ -281,11 +347,20 @@ export default {
           await altinEnsureColumn(env.DB, 'purchases', 'paidAmount', 'REAL DEFAULT 0');
           await altinEnsureColumn(env.DB, 'purchases', 'debtAmount', 'REAL DEFAULT 0');
           await altinEnsureColumn(env.DB, 'purchases', 'total', 'REAL DEFAULT 0');
+          await altinEnsureColumn(env.DB, 'purchases', 'paymentMethod', "TEXT DEFAULT 'نەقد'");
+          await altinEnsureColumn(env.DB, 'purchases', 'exchangeRate', 'REAL DEFAULT 0');
+          await altinEnsureColumn(env.DB, 'purchases', 'paidIQD', 'REAL DEFAULT 0');
           // Currency fields for purchase-debt tracking. Existing rows remain IQD.
           await altinEnsureColumn(env.DB, 'purchases', 'currency', "TEXT DEFAULT 'IQD'");
           await altinEnsureColumn(env.DB, 'debts', 'currency', "TEXT DEFAULT 'IQD'");
           await altinEnsureColumn(env.DB, 'payments', 'currency', "TEXT DEFAULT 'IQD'");
           await altinEnsureColumn(env.DB, 'payments', 'paymentMethod', "TEXT DEFAULT 'نەقد'");
+          await altinEnsureColumn(env.DB, 'payments', 'exchangeRate', 'REAL DEFAULT 0');
+          await altinEnsureColumn(env.DB, 'payments', 'amountIQD', 'REAL DEFAULT 0');
+          await altinEnsureColumn(env.DB, 'expenses', 'paymentMethod', "TEXT DEFAULT 'نەقد'");
+          await altinEnsureColumn(env.DB, 'returns', 'debtOffset', 'REAL DEFAULT 0');
+          await altinEnsureColumn(env.DB, 'returns', 'refundDue', 'REAL DEFAULT 0');
+          await altinEnsureColumn(env.DB, 'returns', 'refundCash', 'REAL DEFAULT 0');
           // Existing historical purchases were recorded as paid in full.
           await env.DB.prepare("UPDATE purchases SET total=COALESCE(NULLIF(total,0),price*qty), paidAmount=CASE WHEN paymentType IS NULL OR paymentType='cash' THEN price*qty ELSE COALESCE(paidAmount,0) END, debtAmount=CASE WHEN paymentType IS NULL OR paymentType='cash' THEN 0 ELSE COALESCE(debtAmount,0) END, paymentType=COALESCE(paymentType,'cash') WHERE total IS NULL OR total=0 OR paymentType IS NULL").run();
           // Repair legacy rows where newly-added default-zero settlement columns obscured
@@ -311,6 +386,7 @@ export default {
           // Backfill only missing cost snapshots in old invoices/returns. Existing
           // snapshots are never rewritten, and no sales, purchases, or returns are deleted.
           await altinMigrateCostSnapshots(env.DB);
+          await altinMigrateCashboxFlows(env.DB);
         })().catch(err => { altinSchemaInitPromise = null; throw err; });
       }
       await altinSchemaInitPromise;
@@ -343,7 +419,7 @@ export default {
             database: "OK",
             payments: "OK",
             audit: "OK",
-            version: "ALTIN Production v15 - Cost Snapshots & Cashbox Fix"
+            version: "ALTIN Production v16 - Accurate Cashbox, Refunds & FX Snapshots"
           });
         } catch (err) {
           const requestId = crypto.randomUUID();
@@ -622,6 +698,28 @@ export default {
         return returnTransaction(data, env.DB, json);
       }
 
+      const cashRefundMatch = path.match(/^\/api\/returns\/([^/]+)\/cash-refund$/);
+      if (cashRefundMatch && request.method === "POST") {
+        const a=await altinRequire(env.DB,request,"returns.create"); if(a.error) return altinAuthResponse(json,a);
+        let data={}; try { data=await request.json(); } catch { return json({success:false,error:"داتای پارەدانی مرجوعات دروست نییە."},400); }
+        const id=decodeURIComponent(cashRefundMatch[1]);
+        const row=await env.DB.prepare("SELECT id,total,debtOffset,refundDue,refundCash FROM returns WHERE id=?").bind(id).first();
+        if(!row) return json({success:false,error:"تۆماری مرجوعات نەدۆزرایەوە."},404);
+        const amount=Number(data.amount);
+        const due=Math.max(0,Number(row.refundDue ?? (Number(row.total||0)-Number(row.debtOffset||0))));
+        const already=Math.max(0,Number(row.refundCash||0));
+        const remaining=Math.max(0,due-already);
+        if(!Number.isFinite(amount)||amount<=0||amount>remaining+1e-8) return json({success:false,error:`بڕی پارە دەبێت لە ٠ تا ${remaining} بێت.`,remaining},400);
+        const now=new Date().toISOString();
+        const statements=[env.DB.prepare("UPDATE returns SET refundCash=refundCash+? WHERE id=? AND COALESCE(refundCash,0)=?").bind(amount,id,already)];
+        altinAppendChangeGuard(statements,env.DB);
+        statements.push(env.DB.prepare("INSERT INTO audit_logs(id,date,action,entity,entityId,details,actor) VALUES(?,?,?,?,?,?,?)").bind(
+          crypto.randomUUID(),now,"RETURN_CASH_REFUND","return",id,JSON.stringify({amount,previousCash:already,newCash:already+amount,refundDue:due,remaining:Math.max(0,remaining-amount)}),a.user.username
+        ));
+        const conflict=await altinBatchOrConflict(env.DB,statements,json); if(conflict)return conflict;
+        return json({success:true,id,refundCash:already+amount,remaining:Math.max(0,remaining-amount)});
+      }
+
       if (path === "/api/payments" && request.method === "POST") {
         const data = await request.json();
         const auth = await altinRequire(env.DB, request, null);
@@ -851,8 +949,11 @@ export default {
           const next = Math.max(0,current-paid);
           const paymentId = crypto.randomUUID();
           const paymentNote = (`قەرزی کڕین • پارەدانی گشتی بۆ فرۆشیار: ${supplier} • ${String(data.note || "پارەدانی قەرزی کڕین").slice(0,220)}`).slice(0,500);
-          statements.push(env.DB.prepare(`INSERT INTO payments(id,debtId,customer,amount,currency,note,date,paymentMethod) VALUES(?,?,?,?,?,?,?,?)`).bind(
-            paymentId,d.id,String(d.name || supplier),paid,currency,paymentNote,paymentDate,paymentMethod
+          const fxRaw=Number(await megaGet(env.DB,"usdRate",1310));
+          const exchangeRate=Number.isFinite(fxRaw)&&fxRaw>=1&&fxRaw<=1000000000?fxRaw:1310;
+          const amountIQD=currency==="USD"?paid*exchangeRate:paid;
+          statements.push(env.DB.prepare(`INSERT INTO payments(id,debtId,customer,amount,currency,note,date,paymentMethod,exchangeRate,amountIQD) VALUES(?,?,?,?,?,?,?,?,?,?)`).bind(
+            paymentId,d.id,String(d.name || supplier),paid,currency,paymentNote,paymentDate,paymentMethod,exchangeRate,amountIQD
           ));
           if (next <= 1e-8) statements.push(env.DB.prepare("DELETE FROM debts WHERE id=? AND amount=?").bind(d.id,current));
           else statements.push(env.DB.prepare("UPDATE debts SET amount=? WHERE id=? AND amount=?").bind(next,d.id,current));
@@ -925,29 +1026,49 @@ export default {
         const ids = Array.from(new Set((Array.isArray(data.ids) ? data.ids : []).map(x => String(x || "").trim()).filter(Boolean)));
         const percent = Number(data.percent);
         if (!ids.length) return json({success:false,error:"لانیکەم یەک کاڵا هەڵبژێرە."},400);
-        if (ids.length > 200) return json({success:false,error:"لە هەر جارێکدا تەنها تا ٢٠٠ کاڵا هەڵبژێرە."},400);
+        // Supports whole-stock selection rather than the former 200-product cap.
+        if (ids.length > 50000) return json({success:false,error:"ژمارەی کاڵاکان زۆرە؛ تا ٥٠,٠٠٠ کاڵا دەتوانرێت لە هەر جارێکدا نوێ بکرێنەوە."},413);
         if (!Number.isFinite(percent) || percent <= 0 || percent > 1000) return json({success:false,error:"ڕێژەی قازانج دەبێت لە ٠.٠١٪ تا ١٠٠٠٪ بێت."},400);
 
+        // JSON1 supports large selections without an oversized SQL IN list or
+        // a separate request for every product.
+        const idsJson = JSON.stringify(ids);
+        const lookup = await env.DB.prepare(
+          "SELECT p.id,p.name,p.buy,p.sell FROM products p JOIN json_each(?) wanted ON CAST(p.id AS TEXT)=CAST(wanted.value AS TEXT)"
+        ).bind(idsJson).all();
+        const rows = lookup.results || [];
+        const foundIds = new Set(rows.map(p => String(p.id)));
+        if (foundIds.size !== ids.length) {
+          const missing = ids.find(id => !foundIds.has(id));
+          return json({success:false,error:`کاڵای هەڵبژێردراو (${missing || "ناسنامەی نادیار"}) لە کۆگا نەدۆزرایەوە. داتاکان نوێ بکەرەوە و دووبارە هەوڵ بدەرەوە.`},404);
+        }
+
         const changes = [];
-        for (const id of ids) {
-          const p = await env.DB.prepare("SELECT id,name,buy,sell FROM products WHERE id=?").bind(id).first();
-          if (!p) return json({success:false,error:`کاڵای هەڵبژێردراو (${id}) لە کۆگا نەدۆزرایەوە.`},404);
+        for (const p of rows) {
           const buy = Number(p.buy);
-          if (!Number.isFinite(buy) || buy <= 0) return json({success:false,error:`نرخی کڕینی کاڵای «${String(p.name || id)}» دیاری نەکراوە؛ تکایە سەرەتا نرخی کڕینی دروست بنووسە.`},400);
+          if (!Number.isFinite(buy) || buy <= 0) {
+            return json({success:false,error:`نرخی کڕینی کاڵای «${String(p.name || p.id)}» دیاری نەکراوە؛ تکایە سەرەتا نرخی کڕینی دروست بنووسە.`},400);
+          }
           const before = Math.max(0, num(p.sell));
           const sell = Math.round(buy * (1 + percent / 100));
           changes.push({id:String(p.id),name:String(p.name || ""),buy,before,sell,profitPercent:percent});
         }
 
         const now = new Date().toISOString();
-        const statements = changes.map(p => env.DB.prepare("UPDATE products SET sell=? WHERE id=?").bind(p.sell,p.id));
-        statements.push(env.DB.prepare("INSERT INTO audit_logs (id,date,action,entity,entityId,details,actor) VALUES (?,?,?,?,?,?,?)").bind(
+        // A single UPDATE plus its audit record are committed atomically in D1.
+        const update = env.DB.prepare(
+          "UPDATE products SET sell=ROUND(buy * (1 + ? / 100.0)) WHERE id IN (SELECT CAST(value AS TEXT) FROM json_each(?))"
+        ).bind(percent, idsJson);
+        const auditDetails = {
+          mode:"profit-on-buy-price", percent, updated:changes.length,
+          sample:changes.slice(0,100).map(p=>({id:p.id,name:p.name,buy:p.buy,before:p.before,sell:p.sell,profitPercent:p.profitPercent}))
+        };
+        const audit = env.DB.prepare("INSERT INTO audit_logs (id,date,action,entity,entityId,details,actor) VALUES (?,?,?,?,?,?,?)").bind(
           crypto.randomUUID(), now, "BULK_PROFIT_PRICE_UPDATE", "products", "bulk-price",
-          JSON.stringify({mode:"profit-on-buy-price",percent,updated:changes.length,changes:changes.map(p=>({id:p.id,name:p.name,buy:p.buy,before:p.before,sell:p.sell,profitPercent:p.profitPercent}))}),
-          auth.user.username
-        ));
-        await env.DB.batch(statements);
-        return json({success:true,updated:changes.length,mode:"profit-on-buy-price",percent,products:changes.map(p=>({id:p.id,buy:p.buy,sell:p.sell,profitPercent:p.profitPercent}))});
+          JSON.stringify(auditDetails), auth.user.username
+        );
+        await env.DB.batch([update,audit]);
+        return json({success:true,updated:changes.length,mode:"profit-on-buy-price",percent,products:changes.map(p=>({id:p.id,buy:p.buy,sell:p.sell,profitPercent:percent}))});
       }
 
       /* ================= SAFE BARCODE-ONLY UPDATE ================= */
@@ -1077,14 +1198,15 @@ export default {
           await env.DB
             .prepare(
               `INSERT INTO expenses
-              (id,name,amount,date)
-              VALUES (?,?,?,?)`
+              (id,name,amount,date,paymentMethod)
+              VALUES (?,?,?,?,?)`
             )
             .bind(
               data.id,
               data.name || "",
               num(data.amount),
-              data.date || new Date().toISOString()
+              data.date || new Date().toISOString(),
+              String(data.paymentMethod || "نەقد").slice(0,80)
             )
             .run();
 
@@ -1095,6 +1217,16 @@ export default {
         }
 
         if (table === "debts") {
+          const name = String(data.name || "").trim().replace(/\s+/g, " ").slice(0, 120);
+          const amount = Number(data.amount);
+          const note = String(data.note || "").trim().slice(0, 450);
+          const currency = String(data.currency || "IQD").toUpperCase() === "USD" ? "USD" : "IQD";
+          const date = String(data.date || new Date().toISOString()).slice(0, 40);
+          if (!name) return json({success:false,error:"ناوی کڕیار پێویستە."},400);
+          if (!Number.isFinite(amount) || amount <= 0 || amount > 1000000000000) {
+            return json({success:false,error:"بڕی قەرز دەبێت ژمارەیەکی دروست و لە سفر زیاتر بێت."},400);
+          }
+          if (!date) return json({success:false,error:"بەرواری قەرز دروست نییە."},400);
           await env.DB
             .prepare(
               `INSERT INTO debts
@@ -1103,17 +1235,20 @@ export default {
             )
             .bind(
               data.id,
-              data.name || "",
-              num(data.amount),
-              data.note || "",
-              data.date || new Date().toISOString(),
-              data.currency === "USD" ? "USD" : "IQD"
+              name,
+              amount,
+              note,
+              date,
+              currency
             )
             .run();
 
           return json({
             success: true,
-            id: data.id
+            id: data.id,
+            name,
+            amount,
+            currency
           });
         }
 
@@ -1204,7 +1339,8 @@ export default {
               `UPDATE expenses
                SET name=?,
                    amount=?,
-                   date=?
+                   date=?,
+                   paymentMethod=?
                WHERE id=?`
             )
             .bind(
@@ -1212,6 +1348,7 @@ export default {
               num(data.amount),
               data.date ||
                 new Date().toISOString(),
+              String(data.paymentMethod || "نەقد").slice(0,80),
               id
             )
             .run();
@@ -1337,10 +1474,12 @@ async function ensureSchema(db) {
     db.prepare(`CREATE TABLE IF NOT EXISTS purchases (
       id TEXT PRIMARY KEY, product TEXT, qty REAL DEFAULT 0, price REAL DEFAULT 0,
       supplier TEXT DEFAULT '', date TEXT NOT NULL, paymentType TEXT DEFAULT 'cash',
-      paidAmount REAL DEFAULT 0, debtAmount REAL DEFAULT 0, total REAL DEFAULT 0, currency TEXT DEFAULT 'IQD'
+      paidAmount REAL DEFAULT 0, debtAmount REAL DEFAULT 0, total REAL DEFAULT 0, currency TEXT DEFAULT 'IQD',
+      paymentMethod TEXT DEFAULT 'نەقد', exchangeRate REAL DEFAULT 0, paidIQD REAL DEFAULT 0
     )`),
     db.prepare(`CREATE TABLE IF NOT EXISTS expenses (
-      id TEXT PRIMARY KEY, name TEXT DEFAULT '', amount REAL DEFAULT 0, date TEXT NOT NULL
+      id TEXT PRIMARY KEY, name TEXT DEFAULT '', amount REAL DEFAULT 0, date TEXT NOT NULL,
+      paymentMethod TEXT DEFAULT 'نەقد'
     )`),
     db.prepare(`CREATE TABLE IF NOT EXISTS debts (
       id TEXT PRIMARY KEY, name TEXT DEFAULT '', amount REAL DEFAULT 0, note TEXT DEFAULT '',
@@ -1348,7 +1487,8 @@ async function ensureSchema(db) {
     )`),
     db.prepare(`CREATE TABLE IF NOT EXISTS returns (
       id TEXT PRIMARY KEY, date TEXT NOT NULL, items TEXT DEFAULT '[]', total REAL DEFAULT 0,
-      customer TEXT DEFAULT '', reason TEXT DEFAULT ''
+      customer TEXT DEFAULT '', reason TEXT DEFAULT '', debtOffset REAL DEFAULT 0,
+      refundDue REAL DEFAULT 0, refundCash REAL DEFAULT 0
     )`),
     db.prepare(`CREATE TABLE IF NOT EXISTS altin_tx_guard (ok INTEGER NOT NULL CHECK(ok=1))`)
   ]);
@@ -1406,7 +1546,8 @@ async function ensureSchema(db) {
         amount REAL NOT NULL,
         currency TEXT DEFAULT 'IQD',
         note TEXT DEFAULT '',
-        date TEXT NOT NULL
+        date TEXT NOT NULL,
+        paymentMethod TEXT DEFAULT 'نەقد', exchangeRate REAL DEFAULT 0, amountIQD REAL DEFAULT 0
       )
     `),
 
@@ -1510,6 +1651,7 @@ async function saleTransaction(
       subtotal - discount
     );
 
+  const paymentMethod = String(s.paymentMethod || "نەقد").trim().slice(0,80) || "نەقد";
   const requestedPaymentType = ["cash", "credit", "partial"].includes(String(s.paymentType || "cash"))
     ? String(s.paymentType || "cash")
     : "cash";
@@ -1705,7 +1847,8 @@ async function saleTransaction(
       discount,
       total,
       paidAmount: paid,
-      debtAmount: debt
+      debtAmount: debt,
+      paymentMethod
     });
 
 
@@ -1822,7 +1965,8 @@ async function saleTransaction(
         discount,
         paidAmount: paid,
         customer: s.customer,
-        debtAmount: debt
+        debtAmount: debt,
+        paymentMethod
       }),
       s.actor || "system"
     )
@@ -1927,6 +2071,8 @@ async function editSaleTransaction(s, db, json) {
   const paidAmount = requestedType === 'cash' ? total : Math.min(total,Math.max(0,Number(s.paidAmount ?? 0) || 0));
   const debtAmount = Math.max(0,total-paidAmount);
   const paymentType = debtAmount > 0 ? (paidAmount > 0 ? 'partial' : 'credit') : 'cash';
+  let oldSaleMeta={}; try { oldSaleMeta=JSON.parse(String(oldSale.reason||'{}')); } catch {}
+  const paymentMethod=String(s.paymentMethod ?? oldSaleMeta.paymentMethod ?? 'نەقد').trim().slice(0,80) || 'نەقد';
   if (debtAmount > 0 && !customer) return json({success:false,error:'بۆ فاکتۆری قەرز ناوی کڕیار پێویستە.'},400);
 
   const oldQty = new Map(), newQty = new Map(), newPrices = new Map();
@@ -1966,7 +2112,7 @@ async function editSaleTransaction(s, db, json) {
   const linkedIds=new Set(linkedDebts.map(d=>String(d.id)));
   const previousDebt = customer ? (customerDebts.results||[]).filter(d=>!linkedIds.has(String(d.id)) && !String(d.id||'').startsWith('purchase-') && !String(d.note||'').includes('قەرزی کڕین') && String(d.name||'').trim().toLowerCase()===customer.toLowerCase()).reduce((sum,d)=>sum+Number(d.amount||0),0) : 0;
   const date = s.date || oldSale.date || new Date().toISOString();
-  const canonicalReason=JSON.stringify({subtotal,discount,total,paidAmount,debtAmount});
+  const canonicalReason=JSON.stringify({subtotal,discount,total,paidAmount,debtAmount,paymentMethod});
   statements.push(db.prepare(`UPDATE sales SET date=?,items=?,total=?,customer=?,customerPhone=?,paymentType=?,previousDebt=?,reason=?,subtotal=?,discount=?,paidAmount=?,debtAmount=? WHERE id=?`).bind(
     date,JSON.stringify(items),total,customer,customerPhone,paymentType,previousDebt,canonicalReason,subtotal,discount,paidAmount,debtAmount,saleId
   ));
@@ -2159,7 +2305,9 @@ async function altinDeleteRecord(table, id, db, actor, json) {
   }
   statements.push(db.prepare(`DELETE FROM ${realTable} WHERE id=?`).bind(id));
   altinAppendChangeGuard(statements, db);
-  statements.push(db.prepare('INSERT INTO audit_logs(id,date,action,entity,entityId,details,actor) VALUES(?,?,?,?,?,?,?)').bind(crypto.randomUUID(),now,'DELETE',table,id,JSON.stringify({recordDate:row.date||'',name:row.name||row.customer||''}),actor||'system'));
+  const deleteAuditDetails={recordDate:row.date||'',name:row.name||row.customer||''};
+  if(table==='expenses'){deleteAuditDetails.amount=Number(row.amount||0);deleteAuditDetails.paymentMethod=String(row.paymentMethod||'نەقد');}
+  statements.push(db.prepare('INSERT INTO audit_logs(id,date,action,entity,entityId,details,actor) VALUES(?,?,?,?,?,?,?)').bind(crypto.randomUUID(),now,'DELETE',table,id,JSON.stringify(deleteAuditDetails),actor||'system'));
   const conflict = await altinBatchOrConflict(db, statements, json);
   if (conflict) return conflict;
   return json({success:true,id});
@@ -2173,6 +2321,28 @@ async function returnTransaction(x, db, json) {
   if (!x?.id || !Array.isArray(x.items) || !x.items.length) {
     return json({ error: "Invalid return" }, 400);
   }
+  const returnId = String(x.id).trim();
+  if (!returnId || returnId.length > 120) {
+    return json({success:false,error:"ناسنامەی مرجوعات دروست نییە."},400);
+  }
+
+  // Idempotency: a browser may lose the response after D1 committed the return.
+  // Reusing the same return ID must return the saved result, never add stock twice.
+  const previouslySaved = await db.prepare(
+    "SELECT id,total,debtOffset,refundDue,refundCash FROM returns WHERE id=?"
+  ).bind(returnId).first();
+  if (previouslySaved) {
+    return json({
+      success:true,
+      id:String(previouslySaved.id),
+      total:Number(previouslySaved.total||0),
+      debtOffset:Number(previouslySaved.debtOffset||0),
+      refundDue:Number(previouslySaved.refundDue||0),
+      refundCash:Number(previouslySaved.refundCash||0),
+      idempotent:true
+    });
+  }
+
   const items = x.items.map(item => ({
     ...item, qty: Number(item.qty), price: Number(item.price)
   }));
@@ -2265,7 +2435,6 @@ async function returnTransaction(x, db, json) {
 
   const total = savedItems.reduce((sum, item) => sum + item.qty * item.price, 0);
   const date = x.date || new Date().toISOString();
-  const returnId = String(x.id);
   const statements = [];
   for (const product of products) {
     const qty = grouped.get(product.id);
@@ -2285,7 +2454,6 @@ async function returnTransaction(x, db, json) {
     if (saleId) returnTotalsBySale.set(saleId, (returnTotalsBySale.get(saleId) || 0) + Number(item.qty) * Number(item.price));
   }
   let totalDebtOffset = 0;
-  let totalRefundDue = 0;
   for (const [saleId, requestedOffset] of returnTotalsBySale) {
     const linked = await db.prepare("SELECT id,amount FROM debts WHERE note LIKE ? ORDER BY date ASC")
       .bind(`%[فاکتۆر:${saleId}]%`).all();
@@ -2303,24 +2471,63 @@ async function returnTransaction(x, db, json) {
       remainingOffset -= applied;
       totalDebtOffset += applied;
     }
-    totalRefundDue += remainingOffset;
+    // The amount that could not be offset is not assumed to have been paid in cash.
   }
-  statements.push(db.prepare(`INSERT INTO returns (id,date,items,total,customer,reason) VALUES (?,?,?,?,?,?)`).bind(
-    returnId, date, JSON.stringify(savedItems), total, String(x.customer || "سەردانکەر"), String(x.reason || "نادیار")
+  const totalRefundDue = Math.max(0, total - totalDebtOffset);
+  const cashRefundRaw = Number(x.refundCash ?? 0);
+  if (!Number.isFinite(cashRefundRaw) || cashRefundRaw < 0 || cashRefundRaw > totalRefundDue + 1e-8) {
+    return json({success:false,error:`بڕی پارەی نەقدی گەڕێندراوە دەبێت لە ٠ تا ${totalRefundDue} بێت.`,refundDue:totalRefundDue},400);
+  }
+  const refundCash = Math.min(totalRefundDue, cashRefundRaw);
+  statements.push(db.prepare(`INSERT INTO returns (id,date,items,total,customer,reason,debtOffset,refundDue,refundCash) VALUES (?,?,?,?,?,?,?,?,?)`).bind(
+    returnId, date, JSON.stringify(savedItems), total, String(x.customer || "سەردانکەر"), String(x.reason || "نادیار"), totalDebtOffset, totalRefundDue, refundCash
   ));
   statements.push(db.prepare(`INSERT INTO audit_logs (id,date,action,entity,entityId,details,actor) VALUES (?,?,?,?,?,?,?)`).bind(
     crypto.randomUUID(), date, "RETURN", "return", returnId,
-    JSON.stringify({ total, debtOffset:totalDebtOffset, refundDue:totalRefundDue, customer: x.customer || "", items: savedItems }), x.actor || "system"
+    JSON.stringify({ total, debtOffset:totalDebtOffset, refundDue:totalRefundDue, refundCash, customer: x.customer || "", items: savedItems }), x.actor || "system"
   ));
-  const conflict = await altinBatchOrConflict(db, statements, json);
+  let conflict;
+  try {
+    conflict = await altinBatchOrConflict(db, statements, json);
+  } catch (error) {
+    // Two retries can arrive together. D1 rolls back the losing batch on the
+    // unique return ID; if the other request committed, report that same result.
+    const committed = await db.prepare(
+      "SELECT id,total,debtOffset,refundDue,refundCash FROM returns WHERE id=?"
+    ).bind(returnId).first().catch(() => null);
+    if (committed) {
+      return json({
+        success:true,
+        id:String(committed.id),
+        total:Number(committed.total||0),
+        debtOffset:Number(committed.debtOffset||0),
+        refundDue:Number(committed.refundDue||0),
+        refundCash:Number(committed.refundCash||0),
+        idempotent:true
+      });
+    }
+    throw error;
+  }
   if (conflict) return conflict;
-  return json({ success: true, id: returnId, total, debtOffset: totalDebtOffset, refundDue: totalRefundDue });
+  return json({ success: true, id: returnId, total, debtOffset: totalDebtOffset, refundDue: totalRefundDue, refundCash });
 }
 
 /* =========================================================
    PURCHASE BASKET — all lines commit atomically as one supplier invoice
 ========================================================= */
 async function purchaseBatchTransaction(x, db, json) {
+  // The browser reuses this key when a network timeout makes the commit result unclear.
+  // Returning the already-committed batch makes retries safe and prevents duplicate stock/debt rows.
+  const batchId = String(x?.batchId || crypto.randomUUID()).trim();
+  if (!batchId || batchId.length > 120) return json({success:false,error:"ژمارەی فاتورەی کڕین دروست نییە."},400);
+  const existing = await db.prepare("SELECT id,qty,price,total,paidAmount,debtAmount,currency FROM purchases WHERE batchId=? ORDER BY rowid").bind(batchId).all();
+  const existingRows = existing.results || [];
+  if (existingRows.length) {
+    const total = existingRows.reduce((sum,row)=>sum+Math.max(0,Number(row.total)||Number(row.qty||0)*Number(row.price||0)),0);
+    const paidAmount = existingRows.reduce((sum,row)=>sum+Math.max(0,Number(row.paidAmount)||0),0);
+    const debtAmount = existingRows.reduce((sum,row)=>sum+Math.max(0,Number(row.debtAmount)||0),0);
+    return json({success:true,batchId,ids:existingRows.map(row=>String(row.id)),count:existingRows.length,total,paidAmount,debtAmount,currency:String(existingRows[0].currency||"IQD").toUpperCase()==="USD"?"USD":"IQD",idempotent:true,priceSync:true});
+  }
   const rawItems = Array.isArray(x?.items) ? x.items : [];
   if (!rawItems.length) return json({success:false,error:"سەبەتەی کڕین بەتاڵە."},400);
   if (rawItems.length > 100) return json({success:false,error:"لە هەر فاتورەیەکدا زیاتر لە ١٠٠ ڕیزی کاڵا ناتوانرێت تۆمار بکرێت."},400);
@@ -2346,11 +2553,11 @@ async function purchaseBatchTransaction(x, db, json) {
   const total=items.reduce((sum,item)=>sum+item.lineTotal,0);
   if (!Number.isFinite(total)) return json({success:false,error:"کۆی گشتیی کڕین دروست نییە."},400);
   const paymentType=x.paymentType==="credit"?"credit":"cash";
+  const paymentMethod=String(x.paymentMethod||"نەقد").trim().slice(0,80)||"نەقد";
   const currency=String(x.currency||"IQD").toUpperCase()==="USD"?"USD":"IQD";
   const supplier=String(x.supplier||"").trim();
   if (paymentType==="credit" && !supplier) return json({success:false,error:"بۆ کڕینی قەرز، ناوی فرۆشیار/کۆمپانیا پێویستە."},400);
   const date=String(x.date||new Date().toISOString());
-  const batchId=String(x.batchId||crypto.randomUUID());
   let paidAmount=paymentType==="cash"?total:Math.max(0,Number(x.paidAmount)||0);
   if (!Number.isFinite(paidAmount)) return json({success:false,error:"بڕی پارەی دراو دروست نییە."},400);
   paidAmount=Math.min(total,paidAmount);
@@ -2370,6 +2577,7 @@ async function purchaseBatchTransaction(x, db, json) {
       : (total>0?Math.min(item.lineTotal,paidAmount*item.lineTotal/total):0);
     paidAssigned+=item.paidAmount;
     item.debtAmount=Math.max(0,item.lineTotal-item.paidAmount);
+    item.paidIQD=currency==="USD"?item.paidAmount*exchangeRate:item.paidAmount;
   }
 
   // Update each product once, while preserving per-line prices and stock movement history.
@@ -2394,17 +2602,17 @@ async function purchaseBatchTransaction(x, db, json) {
   }
 
   for (const item of items) {
-    statements.push(db.prepare("INSERT INTO purchases (id,product,qty,price,supplier,date,paymentType,paidAmount,debtAmount,total,currency,buyIQD,batchId) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)")
-      .bind(item.id,item.product,item.qty,item.price,supplier,date,paymentType,item.paidAmount,item.debtAmount,item.lineTotal,currency,item.buyIQD,batchId));
+    statements.push(db.prepare("INSERT INTO purchases (id,product,qty,price,supplier,date,paymentType,paidAmount,debtAmount,total,currency,buyIQD,batchId,paymentMethod,exchangeRate,paidIQD) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
+      .bind(item.id,item.product,item.qty,item.price,supplier,date,paymentType,item.paidAmount,item.debtAmount,item.lineTotal,currency,item.buyIQD,batchId,paymentMethod,exchangeRate,item.paidIQD));
     if (item.debtAmount>0) {
       statements.push(db.prepare("INSERT INTO debts (id,name,amount,note,date,currency) VALUES (?,?,?,?,?,?)")
         .bind(`purchase-${item.id}`,supplier||"فرۆشیاری نەناسراو",item.debtAmount,`قەرزی کڕین • ژمارە: ${item.id}`,date,currency));
     }
     statements.push(db.prepare("INSERT INTO audit_logs (id,date,action,entity,entityId,details,actor) VALUES (?,?,?,?,?,?,?)")
-      .bind(crypto.randomUUID(),date,"CREATE","purchase",item.id,JSON.stringify({batchId,product:item.product,qty:item.qty,price:item.price,buyIQD:item.buyIQD,exchangeRate,total:item.lineTotal,paidAmount:item.paidAmount,debtAmount:item.debtAmount,supplier,paymentType,currency}),x.actor||"system"));
+      .bind(crypto.randomUUID(),date,"CREATE","purchase",item.id,JSON.stringify({batchId,product:item.product,qty:item.qty,price:item.price,buyIQD:item.buyIQD,exchangeRate,paidIQD:item.paidIQD,total:item.lineTotal,paidAmount:item.paidAmount,debtAmount:item.debtAmount,supplier,paymentType,paymentMethod,currency}),x.actor||"system"));
   }
   statements.push(db.prepare("INSERT INTO audit_logs (id,date,action,entity,entityId,details,actor) VALUES (?,?,?,?,?,?,?)")
-    .bind(crypto.randomUUID(),date,"CREATE","purchase-batch",batchId,JSON.stringify({count:items.length,total,paidAmount,debtAmount:Math.max(0,total-paidAmount),supplier,paymentType,currency,items:items.map(i=>({id:i.id,product:i.product,qty:i.qty,price:i.price}))}),x.actor||"system"));
+    .bind(crypto.randomUUID(),date,"CREATE","purchase-batch",batchId,JSON.stringify({count:items.length,total,paidAmount,debtAmount:Math.max(0,total-paidAmount),supplier,paymentType,paymentMethod,currency,exchangeRate,items:items.map(i=>({id:i.id,product:i.product,qty:i.qty,price:i.price}))}),x.actor||"system"));
 
   const conflict=await altinBatchOrConflict(db,statements,json);
   if(conflict)return conflict;
@@ -2425,6 +2633,7 @@ async function purchaseTransaction(x, db, json) {
   const total = q * price;
   if (!Number.isFinite(total)) return json({ error: "Invalid purchase total" }, 400);
   const paymentType = x.paymentType === "credit" ? "credit" : "cash";
+  const paymentMethod = String(x.paymentMethod || "نەقد").trim().slice(0,80) || "نەقد";
   const currency = x.currency === "USD" ? "USD" : "IQD";
   const savedFxRaw = Number(await megaGet(db, "usdRate", 1310));
   const exchangeRate = Number.isFinite(savedFxRaw) && savedFxRaw >= 1 && savedFxRaw <= 1000000000 ? savedFxRaw : 1310;
@@ -2434,6 +2643,7 @@ async function purchaseTransaction(x, db, json) {
     ? total
     : Math.min(total, Math.max(0, Number(x.paidAmount) || 0));
   const debtAmount = Math.max(0, total - paidAmount);
+  const paidIQD = currency === "USD" ? paidAmount * exchangeRate : paidAmount;
   const date = x.date || new Date().toISOString();
   const supplier = String(x.supplier || "").trim();
   const purchaseId = x.id || crypto.randomUUID();
@@ -2442,12 +2652,12 @@ async function purchaseTransaction(x, db, json) {
   ];
   altinAppendChangeGuard(statements, db);
   statements.push(
-    db.prepare(`INSERT INTO purchases (id,product,qty,price,supplier,date,paymentType,paidAmount,debtAmount,total,currency,buyIQD) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`)
-      .bind(purchaseId, x.product, q, price, supplier, date, paymentType, paidAmount, debtAmount, total, currency, buyIQD),
+    db.prepare(`INSERT INTO purchases (id,product,qty,price,supplier,date,paymentType,paidAmount,debtAmount,total,currency,buyIQD,paymentMethod,exchangeRate,paidIQD) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+      .bind(purchaseId, x.product, q, price, supplier, date, paymentType, paidAmount, debtAmount, total, currency, buyIQD, paymentMethod, exchangeRate, paidIQD),
     db.prepare(`INSERT INTO stock_movements (id,date,productId,type,qty,beforeQty,afterQty,refId,note) VALUES (?,?,?,?,?,?,?,?,?)`)
       .bind(crypto.randomUUID(), date, p.id, "purchase", q, p.qty, Number(p.qty) + q, purchaseId, "کڕین"),
     db.prepare(`INSERT INTO audit_logs (id,date,action,entity,entityId,details,actor) VALUES (?,?,?,?,?,?,?)`)
-      .bind(crypto.randomUUID(), date, "CREATE", "purchase", purchaseId, JSON.stringify({product:p.id,qty:q,price,buyIQD,exchangeRate,total,paidAmount,debtAmount,supplier,paymentType,currency}), x.actor || "system")
+      .bind(crypto.randomUUID(), date, "CREATE", "purchase", purchaseId, JSON.stringify({product:p.id,qty:q,price,buyIQD,exchangeRate,paidIQD,total,paidAmount,debtAmount,supplier,paymentType,paymentMethod,currency}), x.actor || "system")
   );
   // Supplier debt is recorded in the existing debt ledger, so it appears in the debt center/dashboard
   // and can be settled through the existing payment workflow.
@@ -2481,7 +2691,9 @@ async function editPurchaseTransaction(x, db, json) {
   if(!product) return json({success:false,error:'کاڵای کڕینەکە نەدۆزرایەوە.'},404);
   const currency=x.currency==='USD'?'USD':x.currency==='IQD'?'IQD':(String(old.currency||'IQD').toUpperCase()==='USD'?'USD':'IQD');
   const savedFxRaw=Number(await megaGet(db,'usdRate',1310));
-  const fx=Number.isFinite(savedFxRaw)&&savedFxRaw>=1&&savedFxRaw<=1e9?savedFxRaw:1310;
+  const currentFx=Number.isFinite(savedFxRaw)&&savedFxRaw>=1&&savedFxRaw<=1e9?savedFxRaw:1310;
+  const sameCurrency=currency===(String(old.currency||'IQD').toUpperCase()==='USD'?'USD':'IQD');
+  const fx=sameCurrency&&Number(old.exchangeRate)>0?Number(old.exchangeRate):currentFx;
   const buyIQD=currency==='USD'?price*fx:price;
   const total=qty*price;
   if(!Number.isFinite(total)||!Number.isFinite(buyIQD)) return json({success:false,error:'کۆی نرخی کڕین دروست نییە.'},400);
@@ -2490,6 +2702,8 @@ async function editPurchaseTransaction(x, db, json) {
   if(!Number.isFinite(requestedPaid)||requestedPaid<0) return json({success:false,error:'بڕی پارەی دراو دروست نییە.'},400);
   const paidAmount=paymentType==='cash'?total:Math.min(total,requestedPaid);
   const debtAmount=Math.max(0,total-paidAmount);
+  const paymentMethod=String(x.paymentMethod===undefined?(old.paymentMethod||'نەقد'):(x.paymentMethod||'نەقد')).trim().slice(0,80)||'نەقد';
+  const paidIQD=currency==='USD'?paidAmount*fx:paidAmount;
   const supplier=String(x.supplier===undefined?(old.supplier||''):(x.supplier||'')).trim().slice(0,200);
   const date=String(x.date||old.date||new Date().toISOString()).slice(0,50);
   const previousProduct=oldProductId===productId?product:await db.prepare('SELECT * FROM products WHERE id=?').bind(oldProductId).first();
@@ -2521,7 +2735,7 @@ async function editPurchaseTransaction(x, db, json) {
     statements.push(db.prepare('INSERT INTO stock_movements(id,date,productId,type,qty,beforeQty,afterQty,refId,note) VALUES(?,?,?,?,?,?,?,?,?)').bind(crypto.randomUUID(),now,oldProductId,'purchase-edit',-Number(old.qty||0),beforeOld,Math.max(0,afterOld),id,'گۆڕینی کاڵای کڕین'));
     statements.push(db.prepare('INSERT INTO stock_movements(id,date,productId,type,qty,beforeQty,afterQty,refId,note) VALUES(?,?,?,?,?,?,?,?,?)').bind(crypto.randomUUID(),now,productId,'purchase-edit',qty,beforeNew,afterNew,id,'گۆڕینی کاڵای کڕین'));
   }
-  statements.push(db.prepare('UPDATE purchases SET product=?,qty=?,price=?,supplier=?,date=?,paymentType=?,paidAmount=?,debtAmount=?,total=?,currency=?,buyIQD=? WHERE id=?').bind(productId,qty,price,supplier,date,paymentType,paidAmount,debtAmount,total,currency,buyIQD,id));
+  statements.push(db.prepare('UPDATE purchases SET product=?,qty=?,price=?,supplier=?,date=?,paymentType=?,paidAmount=?,debtAmount=?,total=?,currency=?,buyIQD=?,paymentMethod=?,exchangeRate=?,paidIQD=? WHERE id=?').bind(productId,qty,price,supplier,date,paymentType,paidAmount,debtAmount,total,currency,buyIQD,paymentMethod,fx,paidIQD,id));
   const debtId=`purchase-${id}`;
   const currentDebt=await db.prepare('SELECT id,amount FROM debts WHERE id=?').bind(debtId).first();
   if(debtAmount>1e-8) {
@@ -2535,7 +2749,7 @@ async function editPurchaseTransaction(x, db, json) {
     statements.push(db.prepare('DELETE FROM debts WHERE id=? AND amount=?').bind(debtId,Number(currentDebt.amount||0)));
     altinAppendChangeGuard(statements,db);
   }
-  statements.push(db.prepare('INSERT INTO audit_logs(id,date,action,entity,entityId,details,actor) VALUES(?,?,?,?,?,?,?)').bind(crypto.randomUUID(),now,'EDIT','purchase',id,JSON.stringify({oldProductId,productId,oldQty:Number(old.qty||0),qty,price,total,paidAmount,debtAmount,currency,supplier}),x.actor||'system'));
+  statements.push(db.prepare('INSERT INTO audit_logs(id,date,action,entity,entityId,details,actor) VALUES(?,?,?,?,?,?,?)').bind(crypto.randomUUID(),now,'EDIT','purchase',id,JSON.stringify({oldProductId,productId,oldQty:Number(old.qty||0),qty,price,total,paidAmount,paidIQD,debtAmount,currency,supplier,paymentMethod,exchangeRate:fx}),x.actor||'system'));
   const conflict=await altinBatchOrConflict(db,statements,json);
   if(conflict) return conflict;
   return json({success:true,id,total,paidAmount,debtAmount,currency,buyIQD});
@@ -2600,6 +2814,11 @@ async function paymentTransaction(
     paymentNote = paymentNote.slice(0,500);
   }
 
+  const currency = String(d.currency || x.currency || "IQD").toUpperCase() === "USD" ? "USD" : "IQD";
+  const method = String(x.paymentMethod || "نەقد").trim().slice(0,80) || "نەقد";
+  const fxRaw = Number(await megaGet(db,"usdRate",1310));
+  const exchangeRate = Number.isFinite(fxRaw) && fxRaw >= 1 && fxRaw <= 1000000000 ? fxRaw : 1310;
+  const amountIQD = currency === "USD" ? paid * exchangeRate : paid;
   const statements = [
 
     db.prepare(
@@ -2612,18 +2831,22 @@ async function paymentTransaction(
         currency,
         note,
         date,
-        paymentMethod
+        paymentMethod,
+        exchangeRate,
+        amountIQD
       )
-      VALUES (?,?,?,?,?,?,?,?)`)
+      VALUES (?,?,?,?,?,?,?,?,?,?)`)
     .bind(
       x.id || crypto.randomUUID(),
       d.id,
       d.name,
       paid,
-      d.currency || (x.currency === "USD" ? "USD" : "IQD"),
+      currency,
       paymentNote,
       x.date || new Date().toISOString(),
-      String(x.paymentMethod || "نەقد").slice(0,80)
+      method,
+      exchangeRate,
+      amountIQD
     )
 
   ];
